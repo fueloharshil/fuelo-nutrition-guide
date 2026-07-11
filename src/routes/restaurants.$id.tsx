@@ -179,6 +179,36 @@ function DishCard({ item, restaurantVerified }: { item: MenuItem; restaurantVeri
   );
 }
 
+const CATEGORY_ORDER = [
+  "Snacks",
+  "Cold Meze",
+  "Hot Meze",
+  "Small Plates",
+  "Cold Small Plates",
+  "Hot Small Plates",
+  "Sarnies",
+  "Wraps",
+  "Large Plates",
+  "Chops & Cuts",
+  "Mixed Meze",
+  "Brunch",
+  "Breakfast",
+  "Sides",
+  "Vegetarian",
+  "Feasting Menu",
+  "Sweet Things",
+  "Dessert",
+  "Housemade Softs",
+  "Softs",
+  "Hot Drinks",
+  "Cocktails",
+  "Beer & Cider",
+  "Wine",
+  "Spirits",
+  "Digestifs",
+  "Fortified",
+];
+
 function groupByCategory(items: MenuItem[]): [string | null, MenuItem[]][] {
   const map = new Map<string | null, MenuItem[]>();
   for (const it of items) {
@@ -186,5 +216,17 @@ function groupByCategory(items: MenuItem[]): [string | null, MenuItem[]][] {
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(it);
   }
-  return Array.from(map.entries());
+  const orderIndex = (key: string | null) => {
+    if (key == null) return CATEGORY_ORDER.length + 1;
+    const i = CATEGORY_ORDER.findIndex((c) => c.toLowerCase() === key.toLowerCase());
+    return i === -1 ? CATEGORY_ORDER.length : i;
+  };
+  return Array.from(map.entries()).sort(([a], [b]) => {
+    const ai = orderIndex(a);
+    const bi = orderIndex(b);
+    if (ai !== bi) return ai - bi;
+    const as = a ?? "";
+    const bs = b ?? "";
+    return as.localeCompare(bs);
+  });
 }
