@@ -139,7 +139,7 @@ function Header() {
       <Link to="/" className="flex items-baseline gap-2">
         <span className="text-2xl font-extrabold tracking-tight text-primary">FUELO</span>
         <span className="text-[11px] uppercase tracking-widest text-muted-foreground hidden sm:inline">
-          nutrition for indies
+          Enjoy eating out, fuelled by healthy decisions
         </span>
       </Link>
       <Link
