@@ -41,18 +41,27 @@ function Discover() {
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
   const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     setHydrated(true);
-    if (typeof navigator !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setCenter([pos.coords.latitude, pos.coords.longitude]),
-        () => {},
-        { timeout: 4000 },
-      );
-    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    let recenteredOnce = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setUserLocation(loc);
+        if (!recenteredOnce) {
+          recenteredOnce = true;
+          setCenter(loc);
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   const filtered = useMemo(() => {
