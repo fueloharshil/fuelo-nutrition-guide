@@ -93,12 +93,13 @@ function Discover() {
       </div>
 
       {view === "map" ? (
-        <div className="relative flex-1 min-h-[60vh]">
+        <div className="relative flex-1 min-h-[calc(100vh-180px)] h-[calc(100vh-180px)] min-h-[400px]">
           {hydrated ? (
             <Suspense fallback={<MapSkeleton />}>
               <DiscoverMap
                 restaurants={filtered}
                 center={center}
+                userLocation={userLocation}
                 onSelect={setSelected}
                 activeId={selected?.id}
               />
