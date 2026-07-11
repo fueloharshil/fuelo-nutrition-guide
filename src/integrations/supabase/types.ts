@@ -14,7 +14,164 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      menu_items: {
+        Row: {
+          calories_max: number | null
+          calories_min: number | null
+          carbs_max: number | null
+          carbs_min: number | null
+          category: string | null
+          confidence: number | null
+          created_at: string
+          description: string | null
+          dietary_tags: string[] | null
+          fat_max: number | null
+          fat_min: number | null
+          id: string
+          is_verified: boolean
+          menu_id: string | null
+          name: string
+          price_gbp: number | null
+          protein_max: number | null
+          protein_min: number | null
+          restaurant_id: string
+          source: string | null
+          tag_source: string | null
+        }
+        Insert: {
+          calories_max?: number | null
+          calories_min?: number | null
+          carbs_max?: number | null
+          carbs_min?: number | null
+          category?: string | null
+          confidence?: number | null
+          created_at?: string
+          description?: string | null
+          dietary_tags?: string[] | null
+          fat_max?: number | null
+          fat_min?: number | null
+          id?: string
+          is_verified?: boolean
+          menu_id?: string | null
+          name: string
+          price_gbp?: number | null
+          protein_max?: number | null
+          protein_min?: number | null
+          restaurant_id: string
+          source?: string | null
+          tag_source?: string | null
+        }
+        Update: {
+          calories_max?: number | null
+          calories_min?: number | null
+          carbs_max?: number | null
+          carbs_min?: number | null
+          category?: string | null
+          confidence?: number | null
+          created_at?: string
+          description?: string | null
+          dietary_tags?: string[] | null
+          fat_max?: number | null
+          fat_min?: number | null
+          id?: string
+          is_verified?: boolean
+          menu_id?: string | null
+          name?: string
+          price_gbp?: number | null
+          protein_max?: number | null
+          protein_min?: number | null
+          restaurant_id?: string
+          source?: string | null
+          tag_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_items_menu_id_fkey"
+            columns: ["menu_id"]
+            isOneToOne: false
+            referencedRelation: "menus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menus: {
+        Row: {
+          created_at: string
+          id: string
+          menu_type: string | null
+          name: string
+          restaurant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_type?: string | null
+          name: string
+          restaurant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_type?: string | null
+          name?: string
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menus_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurants: {
+        Row: {
+          address: string | null
+          area: string | null
+          created_at: string
+          cuisine: string | null
+          id: string
+          image_url: string | null
+          latitude: number | null
+          longitude: number | null
+          name: string
+          verified: boolean
+        }
+        Insert: {
+          address?: string | null
+          area?: string | null
+          created_at?: string
+          cuisine?: string | null
+          id?: string
+          image_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          verified?: boolean
+        }
+        Update: {
+          address?: string | null
+          area?: string | null
+          created_at?: string
+          cuisine?: string | null
+          id?: string
+          image_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          verified?: boolean
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
