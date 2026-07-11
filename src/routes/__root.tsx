@@ -87,10 +87,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "FUELO — Nutrition for independent restaurants" },
       {
         property: "og:description",
-        content: "Track calories and macros at your favourite independent restaurants.",
+        content: "Discover independent restaurants and see estimated calories, protein and macros for every dish. Nutrition for the way you eat out.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "FUELO — Nutrition for independent restaurants" },
+      { name: "twitter:description", content: "Discover independent restaurants and see estimated calories, protein and macros for every dish. Nutrition for the way you eat out." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9966e37a-a8cb-4c45-b72c-bea15b242341/id-preview-45f88c99--96530cbe-271f-40f6-9ce7-82709daeea5f.lovable.app-1783786550345.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9966e37a-a8cb-4c45-b72c-bea15b242341/id-preview-45f88c99--96530cbe-271f-40f6-9ce7-82709daeea5f.lovable.app-1783786550345.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
