@@ -5,9 +5,7 @@ import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X } f
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
-import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useSaved } from "@/components/SavedProvider";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
 
