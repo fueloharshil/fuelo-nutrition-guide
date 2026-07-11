@@ -19,7 +19,6 @@ export default function DiscoverMap({ restaurants, center, onSelect, activeId }:
     let cancelled = false;
     (async () => {
       const L = (await import("leaflet")).default;
-      await import("leaflet/dist/leaflet.css");
       if (cancelled || !containerRef.current) return;
       if (mapRef.current) return;
 
