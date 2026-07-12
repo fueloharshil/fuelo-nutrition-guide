@@ -61,7 +61,10 @@ function RestaurantPage() {
   }
 
   const saved = isSaved(r.id);
-  const grouped = groupByCategory(data.items);
+  const [sort, setSort] = useState<SortKey>("none");
+  const grouped = groupByCategory(data.items, sort);
+
+
 
   return (
     <main className="min-h-screen pb-24">
