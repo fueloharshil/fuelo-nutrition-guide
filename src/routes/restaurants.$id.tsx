@@ -149,6 +149,8 @@ function RestaurantPage() {
         ))}
       </div>
 
+      <ClaimRestaurantCard defaultName={r.name} />
+
       <p className="px-6 py-6 mt-4 text-[11px] text-muted-foreground inline-flex items-start gap-2 max-w-2xl">
         <Info className="h-3.5 w-3.5 mt-[1px] flex-none" />
         Nutrition shown is AI-estimated for discovery, not a guarantee. Dietary tags marked as
