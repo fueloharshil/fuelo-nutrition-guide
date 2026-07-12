@@ -108,7 +108,24 @@ function RestaurantPage() {
         </div>
       </header>
 
-      <div className="px-4 sm:px-6 mt-8 space-y-8">
+      <div className="px-4 sm:px-6 mt-6 flex items-center justify-between gap-3">
+        <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
+          Sort dishes
+        </label>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+          className="rounded-full bg-secondary px-3 h-9 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option value="none">Menu order</option>
+          <option value="protein">Highest protein</option>
+          <option value="calories">Lowest calorie</option>
+          <option value="ratio">Best protein-to-calorie balance</option>
+        </select>
+      </div>
+
+      <div className="px-4 sm:px-6 mt-6 space-y-8">
+
         {grouped.length === 0 && (
           <div className="rounded-2xl bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
             Menu coming soon. Once items are imported, they'll appear here with full nutrition
