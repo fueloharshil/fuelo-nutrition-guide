@@ -133,6 +133,27 @@ export type Database = {
           },
         ]
       }
+      restaurant_leads: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          restaurant_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          restaurant_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          restaurant_name?: string | null
+        }
+        Relationships: []
+      }
       restaurants: {
         Row: {
           address: string | null
@@ -169,6 +190,24 @@ export type Database = {
           longitude?: number | null
           name?: string
           verified?: boolean
+        }
+        Relationships: []
+      }
+      user_waitlist: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
         }
         Relationships: []
       }
