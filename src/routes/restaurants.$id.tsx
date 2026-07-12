@@ -9,6 +9,7 @@ import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
 import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSaved } from "@/components/SavedProvider";
+import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -147,6 +148,8 @@ function RestaurantPage() {
           </section>
         ))}
       </div>
+
+      <ClaimRestaurantCard defaultName={r.name} />
 
       <p className="px-6 py-6 mt-4 text-[11px] text-muted-foreground inline-flex items-start gap-2 max-w-2xl">
         <Info className="h-3.5 w-3.5 mt-[1px] flex-none" />

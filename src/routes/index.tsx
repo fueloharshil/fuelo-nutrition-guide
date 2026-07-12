@@ -8,6 +8,7 @@ import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
+import { WaitlistBanner } from "@/components/WaitlistBanner";
 
 const DEFAULT_CENTER: [number, number] = [51.5462, -0.0755]; // Dalston
 
@@ -81,6 +82,7 @@ function Discover() {
   return (
     <main className="min-h-screen flex flex-col">
       <Header />
+      <WaitlistBanner />
 
       <div className="px-4 pt-3 pb-2 sm:px-6">
         <SearchBar value={query} onChange={setQuery} />
