@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info } from "lucide-react";
+
 
 import { supabase } from "@/integrations/supabase/client";
 import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
@@ -59,7 +61,10 @@ function RestaurantPage() {
   }
 
   const saved = isSaved(r.id);
-  const grouped = groupByCategory(data.items);
+  const [sort, setSort] = useState<SortKey>("none");
+  const grouped = groupByCategory(data.items, sort);
+
+
 
   return (
     <main className="min-h-screen pb-24">
@@ -103,7 +108,24 @@ function RestaurantPage() {
         </div>
       </header>
 
-      <div className="px-4 sm:px-6 mt-8 space-y-8">
+      <div className="px-4 sm:px-6 mt-6 flex items-center justify-between gap-3">
+        <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
+          Sort dishes
+        </label>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+          className="rounded-full bg-secondary px-3 h-9 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option value="none">Menu order</option>
+          <option value="protein">Highest protein</option>
+          <option value="calories">Lowest calorie</option>
+          <option value="ratio">Best protein-to-calorie balance</option>
+        </select>
+      </div>
+
+      <div className="px-4 sm:px-6 mt-6 space-y-8">
+
         {grouped.length === 0 && (
           <div className="rounded-2xl bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
             Menu coming soon. Once items are imported, they'll appear here with full nutrition
@@ -209,12 +231,42 @@ const CATEGORY_ORDER = [
   "Fortified",
 ];
 
-function groupByCategory(items: MenuItem[]): [string | null, MenuItem[]][] {
+export type SortKey = "none" | "protein" | "calories" | "ratio";
+
+function mid(a: number | null, b: number | null): number | null {
+  if (a == null && b == null) return null;
+  if (a != null && b != null) return (a + b) / 2;
+  return (a ?? b) as number;
+}
+
+function dishComparator(sort: SortKey) {
+  return (x: MenuItem, y: MenuItem) => {
+    const key = (m: MenuItem): number => {
+      const p = mid(m.protein_min, m.protein_max);
+      const c = mid(m.calories_min, m.calories_max);
+      if (sort === "protein") return p == null ? -Infinity : p;
+      if (sort === "calories") return c == null ? Infinity : c;
+      if (p == null || c == null || c === 0) return -Infinity;
+      return p / c;
+    };
+    const kx = key(x);
+    const ky = key(y);
+    return sort === "calories" ? kx - ky : ky - kx;
+  };
+}
+
+function groupByCategory(
+  items: MenuItem[],
+  sort: SortKey = "none",
+): [string | null, MenuItem[]][] {
   const map = new Map<string | null, MenuItem[]>();
   for (const it of items) {
     const key = it.category || null;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(it);
+  }
+  if (sort !== "none") {
+    for (const [, arr] of map) arr.sort(dishComparator(sort));
   }
   const orderIndex = (key: string | null) => {
     if (key == null) return CATEGORY_ORDER.length + 1;
@@ -230,3 +282,4 @@ function groupByCategory(items: MenuItem[]): [string | null, MenuItem[]][] {
     return as.localeCompare(bs);
   });
 }
+
