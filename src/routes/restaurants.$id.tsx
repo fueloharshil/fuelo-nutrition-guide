@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info } from "lucide-react";
+
 
 import { supabase } from "@/integrations/supabase/client";
 import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
