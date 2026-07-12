@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { LocateFixed } from "lucide-react";
 import type { Restaurant } from "@/lib/fuelo-types";
 
 type Props = {
@@ -8,6 +9,15 @@ type Props = {
   onSelect: (r: Restaurant) => void;
   activeId?: string | null;
 };
+
+const PIN_SVG = (active: boolean) => `
+<svg viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M16 0C7.716 0 1 6.716 1 15c0 10.5 13 23.5 14.05 24.55a1.34 1.34 0 0 0 1.9 0C18 38.5 31 25.5 31 15 31 6.716 24.284 0 16 0z" fill="#16a34a"/>
+  ${active ? '<path d="M16 0C7.716 0 1 6.716 1 15c0 10.5 13 23.5 14.05 24.55a1.34 1.34 0 0 0 1.9 0C18 38.5 31 25.5 31 15 31 6.716 24.284 0 16 0z" fill="none" stroke="#ffffff" stroke-width="3"/>' : ""}
+  <g transform="translate(16 15)" fill="#ffffff">
+    <path d="M-4.2 -5.5 v4.2 M-2.4 -5.5 v4.2 M-0.6 -5.5 v4.2 M-4.2 -1.3 h3.6 a0.9 0.9 0 0 0 0.9 -0.9 v-3.3 M-2.4 -1.3 v6.8 M3.6 -5.5 c1.4 0 2.4 1.6 2.4 3.6 0 1.4 -0.7 2.6 -1.6 3.1 v4.1" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>`;
 
 export default function DiscoverMap({
   restaurants,
@@ -21,8 +31,21 @@ export default function DiscoverMap({
   const markersRef = useRef<Record<string, any>>({});
   const userMarkerRef = useRef<any>(null);
   const LRef = useRef<any>(null);
+  const fitDoneRef = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+
+  const makeIcon = (L: any, active: boolean) => {
+    const size = active ? [40, 50] : [32, 40];
+    return L.divIcon({
+      className: `fuelo-pin-wrap`,
+      html: `<div class="fuelo-pin${active ? " fuelo-pin-active" : ""}">${PIN_SVG(active)}</div>`,
+      iconSize: size as [number, number],
+      iconAnchor: [size[0] / 2, size[1]],
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -31,43 +54,26 @@ export default function DiscoverMap({
       if (cancelled || !containerRef.current || mapRef.current) return;
       LRef.current = L;
 
-      // Fix default marker icon paths (CDN so no bundler shenanigans).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      });
-
       const map = L.map(containerRef.current, {
         center,
         zoom: 14,
         zoomControl: false,
         attributionControl: true,
       });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-        maxZoom: 19,
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: "© OpenStreetMap contributors © CARTO",
+        subdomains: "abcd",
+        maxZoom: 20,
       }).addTo(map);
       L.control.zoom({ position: "bottomright" }).addTo(map);
       mapRef.current = map;
 
-      restaurants.forEach((r) => {
-        if (r.latitude == null || r.longitude == null) return;
-        const marker = L.marker([r.latitude, r.longitude]).addTo(map);
-        marker.on("click", () => onSelectRef.current(r));
-        markersRef.current[r.id] = marker;
-      });
+      renderMarkers();
 
-      // Redraw once mounted, and again after layout settles.
       requestAnimationFrame(() => map.invalidateSize());
       setTimeout(() => map.invalidateSize(), 250);
     })();
 
-    // Also invalidate on window resize.
     const onResize = () => mapRef.current?.invalidateSize();
     window.addEventListener("resize", onResize);
 
@@ -84,8 +90,7 @@ export default function DiscoverMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync restaurant markers when list changes (e.g., after filtering).
-  useEffect(() => {
+  const renderMarkers = () => {
     const map = mapRef.current;
     const L = LRef.current;
     if (!map || !L) return;
@@ -93,10 +98,18 @@ export default function DiscoverMap({
     markersRef.current = {};
     restaurants.forEach((r) => {
       if (r.latitude == null || r.longitude == null) return;
-      const marker = L.marker([r.latitude, r.longitude]).addTo(map);
+      const marker = L.marker([r.latitude, r.longitude], {
+        icon: makeIcon(L, r.id === activeIdRef.current),
+      }).addTo(map);
       marker.on("click", () => onSelectRef.current(r));
       markersRef.current[r.id] = marker;
     });
+  };
+
+  // Sync restaurant markers when list changes.
+  useEffect(() => {
+    renderMarkers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurants]);
 
   // Update view when center changes.
@@ -106,7 +119,21 @@ export default function DiscoverMap({
     }
   }, [center[0], center[1]]);
 
-  // User location marker (distinct blue dot).
+  // Auto-fit bounds once user location + restaurants are known.
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!map || !L || fitDoneRef.current) return;
+    const pts: [number, number][] = restaurants
+      .filter((r) => r.latitude != null && r.longitude != null)
+      .map((r) => [r.latitude as number, r.longitude as number]);
+    if (userLocation) pts.push(userLocation);
+    if (pts.length < 2) return;
+    map.fitBounds(pts, { padding: [48, 48], maxZoom: 15 });
+    fitDoneRef.current = true;
+  }, [restaurants, userLocation]);
+
+  // User location marker.
   useEffect(() => {
     const map = mapRef.current;
     const L = LRef.current;
@@ -136,8 +163,13 @@ export default function DiscoverMap({
     }
   }, [userLocation?.[0], userLocation?.[1]]);
 
-  // Focus active marker.
+  // Focus / restyle active marker.
   useEffect(() => {
+    const L = LRef.current;
+    if (!L) return;
+    Object.entries(markersRef.current).forEach(([id, m]: [string, any]) => {
+      m.setIcon(makeIcon(L, id === activeId));
+    });
     if (!mapRef.current || !activeId) return;
     const m = markersRef.current[activeId];
     if (m) {
@@ -148,5 +180,25 @@ export default function DiscoverMap({
     }
   }, [activeId]);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  const recenter = () => {
+    if (!mapRef.current || !userLocation) return;
+    mapRef.current.setView(userLocation, Math.max(mapRef.current.getZoom(), 15), {
+      animate: true,
+    });
+  };
+
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" />
+      {userLocation && (
+        <button
+          onClick={recenter}
+          aria-label="Recenter on my location"
+          className="absolute bottom-24 right-3 z-[400] h-11 w-11 rounded-full bg-card shadow-[var(--shadow-float)] flex items-center justify-center hover:bg-accent transition"
+        >
+          <LocateFixed className="h-5 w-5 text-primary" />
+        </button>
+      )}
+    </div>
+  );
 }
