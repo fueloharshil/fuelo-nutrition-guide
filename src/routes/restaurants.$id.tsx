@@ -9,6 +9,7 @@ import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
 import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSaved } from "@/components/SavedProvider";
+import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
