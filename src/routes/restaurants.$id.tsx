@@ -154,8 +154,8 @@ function RestaurantPage() {
 
       <p className="px-6 py-6 mt-4 text-[11px] text-muted-foreground inline-flex items-start gap-2 max-w-2xl">
         <Info className="h-3.5 w-3.5 mt-[1px] flex-none" />
-        Nutrition shown is AI-estimated for discovery, not a guarantee. Dietary tags marked as
-        estimated aren't confirmed by the restaurant — always check for allergens.
+        Nutrition is AI-estimated for discovery, not a guarantee — check with the restaurant for
+        allergens.
       </p>
     </main>
   );
