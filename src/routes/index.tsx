@@ -41,6 +41,7 @@ function Discover() {
   const { data } = useSuspenseQuery(discoverQuery);
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
+  const [cuisine, setCuisine] = useState<string | null>(null);
   const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [selected, setSelected] = useState<Restaurant | null>(null);
@@ -65,24 +66,49 @@ function Discover() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
+  const cuisines = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const r of data.restaurants) {
+      const c = (r.cuisine ?? "").trim();
+      if (!c) continue;
+      const key = c.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(c);
+    }
+    return list.sort();
+  }, [data.restaurants]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return data.restaurants;
-    const dishHits = new Set(
-      data.items.filter((i) => i.name.toLowerCase().includes(q)).map((i) => i.restaurant_id),
-    );
-    return data.restaurants.filter(
-      (r) =>
+    const dishHits = q
+      ? new Set(
+          data.items.filter((i) => i.name.toLowerCase().includes(q)).map((i) => i.restaurant_id),
+        )
+      : null;
+    return data.restaurants.filter((r) => {
+      if (cuisine && (r.cuisine ?? "").toLowerCase() !== cuisine.toLowerCase()) return false;
+      if (!q) return true;
+      return (
         r.name.toLowerCase().includes(q) ||
         (r.cuisine ?? "").toLowerCase().includes(q) ||
-        dishHits.has(r.id),
-    );
-  }, [query, data]);
+        dishHits!.has(r.id)
+      );
+    });
+  }, [query, cuisine, data]);
 
   return (
     <main className="min-h-screen flex flex-col">
       <Header />
       <WaitlistBanner />
+
+      <TrendingRow
+        cuisines={cuisines}
+        active={cuisine}
+        onSelect={(c) => setCuisine((prev) => (prev === c ? null : c))}
+        onClear={() => setCuisine(null)}
+      />
 
       <div className="px-4 pt-3 pb-2 sm:px-6">
         <SearchBar value={query} onChange={setQuery} />
@@ -93,6 +119,7 @@ function Discover() {
           </span>
         </div>
       </div>
+
 
       {view === "map" ? (
         <div className="relative flex-1 min-h-[calc(100vh-180px)] h-[calc(100vh-180px)] min-h-[400px]">
