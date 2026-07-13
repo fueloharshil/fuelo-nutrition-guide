@@ -195,11 +195,7 @@ function DishCard({ item, restaurantVerified }: { item: MenuItem; restaurantVeri
       )}
       <div className="mt-3 flex items-center justify-between">
         <StatusBadge verified={verified} />
-        {item.confidence != null && !verified && (
-          <span className="text-[10px] text-muted-foreground">
-            confidence {Math.round(Number(item.confidence) * 100)}%
-          </span>
-        )}
+        <ConfidenceRing confidence={item.confidence} verified={verified} />
       </div>
     </article>
   );
