@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
 import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ConfidenceRing } from "@/components/ConfidenceRing";
 import { useSaved } from "@/components/SavedProvider";
 import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
 
@@ -194,11 +195,7 @@ function DishCard({ item, restaurantVerified }: { item: MenuItem; restaurantVeri
       )}
       <div className="mt-3 flex items-center justify-between">
         <StatusBadge verified={verified} />
-        {item.confidence != null && !verified && (
-          <span className="text-[10px] text-muted-foreground">
-            confidence {Math.round(Number(item.confidence) * 100)}%
-          </span>
-        )}
+        <ConfidenceRing confidence={item.confidence} verified={verified} />
       </div>
     </article>
   );
