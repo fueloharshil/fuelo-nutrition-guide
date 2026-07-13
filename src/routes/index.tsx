@@ -164,23 +164,136 @@ function Discover() {
 
 function Header() {
   return (
-    <header className="px-4 pt-6 pb-1 sm:px-6 flex items-center justify-between">
-      <Link to="/" className="flex items-baseline gap-2">
-        <span className="text-2xl font-extrabold tracking-tight text-primary">FUELO</span>
-        <span className="text-[11px] uppercase tracking-widest text-muted-foreground hidden sm:inline">
+    <header className="px-4 pt-6 pb-1 sm:px-6 flex items-start justify-between gap-3">
+      <Link to="/" className="flex flex-col min-w-0">
+        <span className="text-2xl font-extrabold tracking-tight text-primary leading-none">
+          FUELO
+        </span>
+        <span className="mt-1 text-[11px] uppercase tracking-widest text-muted-foreground">
           Enjoy eating out, fuelled by healthy decisions
         </span>
       </Link>
-      <Link
-        to="/saved"
-        className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-accent transition"
-      >
-        <Bookmark className="h-4 w-4" />
-        Saved
-      </Link>
+      <div className="flex items-center gap-2 flex-none">
+        <Link
+          to="/saved"
+          className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-accent transition"
+        >
+          <Bookmark className="h-4 w-4" />
+          <span className="hidden sm:inline">Saved</span>
+        </Link>
+        <Link
+          to="/profile"
+          aria-label="Your profile"
+          className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-secondary hover:bg-accent transition"
+        >
+          <User className="h-4 w-4" />
+        </Link>
+      </div>
     </header>
   );
 }
+
+const CUISINE_EMOJI: Record<string, string> = {
+  "middle eastern": "🥙",
+  "middle east": "🥙",
+  turkish: "🥙",
+  mediterranean: "🫒",
+  brunch: "🍳",
+  breakfast: "🍳",
+  "live-fire grill": "🔥",
+  "live fire": "🔥",
+  grill: "🔥",
+  bbq: "🔥",
+  bakery: "🥐",
+  italian: "🍝",
+  pizza: "🍕",
+  sushi: "🍣",
+  japanese: "🍣",
+  ramen: "🍜",
+  thai: "🌶️",
+  indian: "🍛",
+  chinese: "🥟",
+  mexican: "🌮",
+  vegan: "🥗",
+  vegetarian: "🥗",
+  seafood: "🦐",
+  burger: "🍔",
+  american: "🍔",
+  french: "🥖",
+  cafe: "☕",
+  coffee: "☕",
+};
+
+function cuisineEmoji(c: string): string {
+  const key = c.toLowerCase();
+  if (CUISINE_EMOJI[key]) return CUISINE_EMOJI[key];
+  for (const [k, v] of Object.entries(CUISINE_EMOJI)) {
+    if (key.includes(k)) return v;
+  }
+  return "🍽️";
+}
+
+function TrendingRow({
+  cuisines,
+  active,
+  onSelect,
+  onClear,
+}: {
+  cuisines: string[];
+  active: string | null;
+  onSelect: (c: string) => void;
+  onClear: () => void;
+}) {
+  if (cuisines.length === 0) return null;
+  return (
+    <section className="px-4 sm:px-6 pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
+          Trending near you
+        </h2>
+        {active && (
+          <button
+            onClick={onClear}
+            className="inline-flex items-center gap-1 rounded-full bg-secondary hover:bg-accent px-2.5 py-1 text-[11px] font-medium transition"
+          >
+            <X className="h-3 w-3" /> Clear
+          </button>
+        )}
+      </div>
+      <div className="-mx-4 sm:-mx-6 px-4 sm:px-6 overflow-x-auto scrollbar-none">
+        <ul className="flex gap-3 pb-1">
+          {cuisines.map((c) => {
+            const isActive = active?.toLowerCase() === c.toLowerCase();
+            return (
+              <li key={c} className="flex-none">
+                <button
+                  onClick={() => onSelect(c)}
+                  className={`relative flex flex-col justify-between w-[140px] h-[92px] rounded-2xl p-3 text-left shadow-[var(--shadow-card)] overflow-hidden transition active:scale-[0.98] ${
+                    isActive
+                      ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                      : "hover:shadow-[var(--shadow-float)]"
+                  }`}
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.72 0.14 148) 0%, oklch(0.42 0.11 152) 100%)",
+                  }}
+                >
+                  <span className="text-2xl leading-none" aria-hidden>
+                    {cuisineEmoji(c)}
+                  </span>
+                  <span className="text-white font-bold text-sm leading-tight tracking-tight drop-shadow-sm">
+                    {c}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 
 function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
