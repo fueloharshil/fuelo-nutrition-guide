@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X } from "lucide-react";
+import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
