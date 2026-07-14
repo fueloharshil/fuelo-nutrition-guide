@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { BottomNav } from "@/components/BottomNav";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -14,7 +15,7 @@ export const Route = createFileRoute("/profile")({
 function ProfilePage() {
   const router = useRouter();
   return (
-    <main className="min-h-screen px-4 pt-5 sm:px-6">
+    <main className="min-h-screen pb-24 px-4 pt-5 sm:px-6">
       <button
         onClick={() => router.history.back()}
         className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -37,6 +38,8 @@ function ProfilePage() {
           .
         </p>
       </div>
+
+      <BottomNav active="profile" />
     </main>
   );
 }

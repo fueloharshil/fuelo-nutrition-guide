@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { LocateFixed } from "lucide-react";
 import type { Restaurant } from "@/lib/fuelo-types";
+import { BADGE_LABEL, type BadgeType } from "@/lib/discoverBadges";
 
 type Props = {
   restaurants: Restaurant[];
@@ -8,16 +9,34 @@ type Props = {
   userLocation?: [number, number] | null;
   onSelect: (r: Restaurant) => void;
   activeId?: string | null;
+  badges?: Record<string, BadgeType | null>;
 };
 
-const PIN_SVG = (active: boolean) => `
-<svg viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <path d="M16 0C7.716 0 1 6.716 1 15c0 10.5 13 23.5 14.05 24.55a1.34 1.34 0 0 0 1.9 0C18 38.5 31 25.5 31 15 31 6.716 24.284 0 16 0z" fill="#16a34a"/>
-  ${active ? '<path d="M16 0C7.716 0 1 6.716 1 15c0 10.5 13 23.5 14.05 24.55a1.34 1.34 0 0 0 1.9 0C18 38.5 31 25.5 31 15 31 6.716 24.284 0 16 0z" fill="none" stroke="#ffffff" stroke-width="3"/>' : ""}
-  <g transform="translate(16 15)" fill="#ffffff">
-    <path d="M-4.2 -5.5 v4.2 M-2.4 -5.5 v4.2 M-0.6 -5.5 v4.2 M-4.2 -1.3 h3.6 a0.9 0.9 0 0 0 0.9 -0.9 v-3.3 M-2.4 -1.3 v6.8 M3.6 -5.5 c1.4 0 2.4 1.6 2.4 3.6 0 1.4 -0.7 2.6 -1.6 3.1 v4.1" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" fill="none"/>
-  </g>
+// The Fuelo Ring mark: a small circular pin matching the logo icon and the
+// in-app confidence ring (see ConfidenceRing.tsx / public/fuelo-wordmark.svg)
+// — a solid green circle with a white partial ring (arc, not closed) and a
+// white dot at the arc's edge, rather than a teardrop map-pin shape. The
+// active variant adds a white outer halo ring and scales up.
+const RING_SVG = (active: boolean) => {
+  const R = active ? 13 : 11; // main green circle radius
+  const ringR = R * (7 / 11); // inner white arc radius, proportional to R
+  const ringStroke = active ? 3.1 : 2.6;
+  const circumference = 2 * Math.PI * ringR;
+  // Same ~75%/25% dash/gap ratio as the logo's ring (dasharray 104 34 on r=22).
+  const dash = (circumference * 104) / 138.2;
+  const gap = (circumference * 34) / 138.2;
+  const dotR = active ? 2.1 : 1.75;
+  const angleRad = (-40 * Math.PI) / 180; // same arc-edge angle as the logo mark
+  const dotX = 20 + ringR * Math.cos(angleRad);
+  const dotY = 20 + ringR * Math.sin(angleRad);
+  return `
+<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  ${active ? '<circle cx="20" cy="20" r="17" fill="none" stroke="#ffffff" stroke-width="3"/>' : ""}
+  <circle cx="20" cy="20" r="${R}" fill="#16a34a"/>
+  <circle cx="20" cy="20" r="${ringR.toFixed(2)}" fill="none" stroke="#ffffff" stroke-width="${ringStroke}" stroke-linecap="round" stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" transform="rotate(-52 20 20)"/>
+  <circle cx="${dotX.toFixed(2)}" cy="${dotY.toFixed(2)}" r="${dotR}" fill="#ffffff"/>
 </svg>`;
+};
 
 export default function DiscoverMap({
   restaurants,
@@ -25,6 +44,7 @@ export default function DiscoverMap({
   userLocation,
   onSelect,
   activeId,
+  badges,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -37,14 +57,19 @@ export default function DiscoverMap({
   onSelectRef.current = onSelect;
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
+  const badgesRef = useRef(badges);
+  badgesRef.current = badges;
 
-  const makeIcon = (L: any, active: boolean) => {
-    const size = active ? [40, 50] : [32, 40];
+  const makeIcon = (L: any, active: boolean, badge: BadgeType | null | undefined) => {
+    const size = active ? 44 : 30;
+    const badgeHtml = badge
+      ? `<span class="fuelo-ring-badge">${BADGE_LABEL[badge]}</span>`
+      : "";
     return L.divIcon({
-      className: `fuelo-pin-wrap`,
-      html: `<div class="fuelo-pin${active ? " fuelo-pin-active" : ""}">${PIN_SVG(active)}</div>`,
-      iconSize: size as [number, number],
-      iconAnchor: [size[0] / 2, size[1]],
+      className: "fuelo-ring-wrap",
+      html: `<div class="fuelo-ring-pin${active ? " fuelo-ring-pin-active" : ""}">${RING_SVG(active)}${badgeHtml}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
     });
   };
 
@@ -61,7 +86,7 @@ export default function DiscoverMap({
         zoomControl: false,
         attributionControl: true,
       });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "© OpenStreetMap contributors © CARTO",
         subdomains: "abcd",
         maxZoom: 20,
@@ -116,19 +141,20 @@ export default function DiscoverMap({
     markersRef.current = {};
     restaurants.forEach((r) => {
       if (r.latitude == null || r.longitude == null) return;
+      const isActive = r.id === activeIdRef.current;
       const marker = L.marker([r.latitude, r.longitude], {
-        icon: makeIcon(L, r.id === activeIdRef.current),
+        icon: makeIcon(L, isActive, badgesRef.current?.[r.id]),
       }).addTo(map);
       marker.on("click", () => onSelectRef.current(r));
       markersRef.current[r.id] = marker;
     });
   };
 
-  // Sync restaurant markers when list changes.
+  // Sync restaurant markers when the list or their badges change.
   useEffect(() => {
     renderMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurants]);
+  }, [restaurants, badges]);
 
   // Update view when center changes.
   useEffect(() => {
@@ -151,7 +177,7 @@ export default function DiscoverMap({
     fitDoneRef.current = true;
   }, [restaurants, userLocation]);
 
-  // User location marker.
+  // User location marker — a distinct blue dot, never styled like a restaurant pin.
   useEffect(() => {
     const map = mapRef.current;
     const L = LRef.current;
@@ -186,7 +212,7 @@ export default function DiscoverMap({
     const L = LRef.current;
     if (!L) return;
     Object.entries(markersRef.current).forEach(([id, m]: [string, any]) => {
-      m.setIcon(makeIcon(L, id === activeId));
+      m.setIcon(makeIcon(L, id === activeId, badgesRef.current?.[id]));
     });
     if (!mapRef.current || !activeId) return;
     const m = markersRef.current[activeId];

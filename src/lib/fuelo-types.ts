@@ -9,6 +9,7 @@ export type Restaurant = {
   longitude: number | null;
   image_url: string | null;
   verified: boolean;
+  created_at?: string;
 };
 
 export type MenuItem = {
@@ -32,6 +33,15 @@ export type MenuItem = {
   confidence: number | null;
   source: string | null;
   is_verified: boolean;
+  is_active?: boolean;
+  created_at?: string;
+};
+
+export type RestaurantOwner = {
+  id: string;
+  email: string;
+  restaurant_id: string | null;
+  created_at?: string;
 };
 
 export function formatRange(

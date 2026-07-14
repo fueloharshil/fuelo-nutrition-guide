@@ -5,6 +5,7 @@ import { ArrowLeft, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant } from "@/lib/fuelo-types";
 import { useSaved } from "@/components/SavedProvider";
+import { BottomNav } from "@/components/BottomNav";
 
 const allRestaurantsQuery = queryOptions({
   queryKey: ["restaurants-all"],
@@ -67,6 +68,8 @@ function SavedPage() {
           </ul>
         )}
       </div>
+
+      <BottomNav active="saved" />
     </main>
   );
 }

@@ -16,6 +16,8 @@ import {
 } from "@/lib/filters";
 import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
+import { computeBadge } from "@/lib/discoverBadges";
+import { BottomNav } from "@/components/BottomNav";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
 import { WaitlistBanner } from "@/components/WaitlistBanner";
@@ -30,6 +32,7 @@ type DiscoverItem = Pick<
   | "protein_min"
   | "protein_max"
   | "dietary_tags"
+  | "is_verified"
 >;
 
 const DEFAULT_CENTER: [number, number] = [51.5462, -0.0755]; // Dalston
@@ -42,7 +45,7 @@ const discoverQuery = queryOptions({
       supabase
         .from("menu_items")
         .select(
-          "id,restaurant_id,name,calories_min,calories_max,protein_min,protein_max,dietary_tags",
+          "id,restaurant_id,name,calories_min,calories_max,protein_min,protein_max,dietary_tags,is_verified",
         ),
     ]);
     if (rests.error) throw rests.error;
@@ -127,6 +130,25 @@ function Discover() {
     return ids;
   }, [data.items, filters]);
 
+  // Restaurants with at least one restaurant-verified dish, for the "Verified"
+  // map-pin badge (distinct from the restaurant-level `verified` flag).
+  const verifiedRestaurantIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const it of data.items) {
+      if (it.is_verified) ids.add(it.restaurant_id);
+    }
+    return ids;
+  }, [data.items]);
+
+  // One badge per restaurant for its map pin: Verified > New > Top Rated.
+  const badges = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computeBadge>> = {};
+    for (const r of data.restaurants) {
+      map[r.id] = computeBadge(r, verifiedRestaurantIds.has(r.id));
+    }
+    return map;
+  }, [data.restaurants, verifiedRestaurantIds]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const dishHits = q
@@ -185,6 +207,7 @@ function Discover() {
                 userLocation={userLocation}
                 onSelect={setSelected}
                 activeId={selected?.id}
+                badges={badges}
               />
             </Suspense>
           ) : (
@@ -218,6 +241,8 @@ function Discover() {
         onClose={() => setFiltersOpen(false)}
         resultCount={filtered.length}
       />
+
+      <BottomNav active="discover" />
     </main>
   );
 }
@@ -226,11 +251,15 @@ function Header() {
   return (
     <header className="px-4 pt-6 pb-1 sm:px-6 flex items-start justify-between gap-3">
       <Link to="/" className="flex flex-col min-w-0">
-        <span className="text-2xl font-extrabold tracking-tight text-primary leading-none">
-          FUELO
-        </span>
+        <img
+          src="/fuelo-wordmark.svg"
+          alt="Fuelo"
+          className="h-14 w-auto"
+          width={178}
+          height={70}
+        />
         <span className="mt-1 text-[11px] uppercase tracking-widest text-muted-foreground">
-          Enjoy eating out, fuelled by healthy decisions
+          Discover More, Digest Smarter.
         </span>
       </Link>
       <div className="flex items-center gap-2 flex-none">

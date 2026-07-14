@@ -3,7 +3,7 @@
 Standing memory of the **Fuelo** project. Fuelo is a nutrition-discovery app for
 independent restaurants: browse spots on a map, open a restaurant, and see
 AI-estimated calories, protein and macros for each dish. Tagline in the header:
-_"Enjoy eating out, fuelled by healthy decisions."_
+_"Discover More, Digest Smarter."_
 
 This file documents the project so future sessions have context. **Do not change
 features unless asked** — this repo is Lovable-generated and syncs two-way with
@@ -66,14 +66,18 @@ GitHub.
 ├── src/
 │   ├── routes/                     # File-based routes (TanStack Router)
 │   │   ├── __root.tsx              # App shell: <html>, head/meta, providers, error + 404 boundaries
-│   │   ├── index.tsx              # "/"  — Discover (map + list, search, cuisine filter, waitlist)
-│   │   ├── restaurants.$id.tsx    # "/restaurants/:id" — restaurant page + menu + claim card
-│   │   ├── saved.tsx              # "/saved" — saved restaurants (from localStorage)
-│   │   ├── profile.tsx            # "/profile" — placeholder ("coming soon")
+│   │   ├── index.tsx              # "/"  — Discover (map + list, search, filters, waitlist, bottom nav)
+│   │   ├── feed.tsx               # "/feed" — Trending / Newly verified / High protein picks, bottom nav
+│   │   ├── restaurants.$id.tsx    # "/restaurants/:id" — restaurant page + menu + claim card (no bottom nav)
+│   │   ├── saved.tsx              # "/saved" — saved restaurants (from localStorage), bottom nav
+│   │   ├── profile.tsx            # "/profile" — placeholder ("coming soon"), bottom nav
 │   │   └── README.md              # Routing conventions (do NOT create src/pages/ etc.)
 │   ├── components/
-│   │   ├── DiscoverMap.tsx        # Leaflet map, custom green pins, user-location dot, recenter
+│   │   ├── DiscoverMap.tsx        # Leaflet map, Fuelo Ring pins + badges, user-location dot, recenter
+│   │   ├── BottomNav.tsx          # Persistent 4-tab bottom nav (Discover/Feed/Saved/Profile)
 │   │   ├── SavedProvider.tsx      # Context + localStorage ("fuelo:saved") for saved restaurant ids
+│   │   ├── FiltersProvider.tsx    # Context for Discover filters (calories/protein/dietary/cuisine)
+│   │   ├── FilterSheet.tsx        # Discover filter bottom-sheet UI, grouped cuisine taxonomy
 │   │   ├── WaitlistBanner.tsx     # Email capture → user_waitlist
 │   │   ├── ClaimRestaurantCard.tsx# Email capture → restaurant_leads ("Own this restaurant?")
 │   │   ├── NutritionChips.tsx     # kcal / P / C / F pills from a menu item
@@ -88,6 +92,10 @@ GitHub.
 │   │   └── auth-middleware.ts
 │   ├── lib/
 │   │   ├── fuelo-types.ts         # Restaurant & MenuItem app types + formatRange() helper
+│   │   ├── filters.ts             # Discover filter types + dish-matching (midpoint-based)
+│   │   ├── cuisines.ts            # Fixed cuisine taxonomy (CUISINE_TAGS) + grouped filter UI order
+│   │   ├── cuisineImages.ts       # Verified Unsplash photo URLs for "Trending near you" tiles
+│   │   ├── discoverBadges.ts      # Map-pin badge logic: Verified > New > Top Rated (placeholder)
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
 │   ├── hooks/use-mobile.tsx
@@ -95,6 +103,8 @@ GitHub.
 │   ├── router.tsx                 # createRouter (QueryClient in context)
 │   ├── routeTree.gen.ts           # AUTO-GENERATED — never edit by hand
 │   ├── server.ts / start.ts       # SSR entry / bootstrap
+├── public/
+│   └── fuelo-wordmark.svg         # Header logo (ring mark + "Fuelo" wordmark), used on Discover
 ├── supabase/
 │   ├── config.toml                # project_id
 │   └── migrations/                # SQL schema (source of truth for the DB)
@@ -170,10 +180,12 @@ RLS: **public SELECT**. Indexed on `restaurant_id`.
 | `tag_source` | text | CHECK in (`menu-stated`, `AI-estimated`) |
 | `confidence` | numeric | 0–1, drives the ConfidenceRing |
 | `source` | text | default `'AI estimated'` |
-| `is_verified` | boolean | NOT NULL default `false` |
+| `is_verified` | boolean | NOT NULL default `false` → drives the "Verified" badge/ring |
+| `is_active` | boolean | NOT NULL default `true` — owner soft-hide (`false` = removed from public menu, not deleted). Added in migration `20260714200000_restaurant_owners_and_verify`. |
 | `created_at` | timestamptz | default `now()` |
 
-RLS: **public SELECT**. Indexed on `restaurant_id` and `menu_id`.
+RLS: **public SELECT**; **UPDATE** allowed to an authenticated owner for their
+own restaurant's dishes (via `restaurant_owners`). Indexed on `restaurant_id` and `menu_id`.
 Nutrition ranges render via `formatRange()` in `src/lib/fuelo-types.ts` (shows
 `min–max`, `~x` if only one bound, single value if equal).
 
@@ -197,13 +209,35 @@ RLS: **public INSERT only**, with a WITH CHECK enforcing a valid email regex and
 | `restaurant_name` | text | nullable (≤ 200 chars) |
 | `created_at` | timestamptz | default `now()` |
 
-RLS: **public INSERT only**, WITH CHECK enforcing email regex, `email ≤ 255`,
-and `restaurant_name` null or ≤ 200 chars. No public SELECT. Written by
-`ClaimRestaurantCard.tsx`.
+RLS: **public INSERT**, WITH CHECK enforcing email regex, `email ≤ 255`,
+and `restaurant_name` null or ≤ 200 chars. Written by `ClaimRestaurantCard.tsx`.
+The admin (see below) can also SELECT leads to onboard from them.
+
+### `restaurant_owners`  — who may verify which restaurant
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | |
+| `email` | text | NOT NULL — matches the Supabase Auth login email |
+| `restaurant_id` | uuid FK → restaurants(id) | nullable (null until an admin approves & links the claim), ON DELETE SET NULL |
+| `created_at` | timestamptz | default `now()` |
+
+RLS: an authenticated owner reads **their own** row; the **admin** email
+(`harshilmagecha@outlook.com`, hardcoded in the migration + `useOwnerAuth.ts`)
+has full access. Added in migration `20260714200000_restaurant_owners_and_verify`.
+
+> **Claim & verify flow.** Owners authenticate with **Supabase Auth email magic
+> link** (`supabase.auth.signInWithOtp`). Claim card → inserts a lead + shows
+> "check your email"; admin (`/admin`) links an owner email → restaurant;
+> owner (`/verify`) logs in and verifies each dish (Looks right / Adjust / Not
+> on our menu). Owner writes are gated by the menu_items UPDATE policy above.
+> The generated `types.ts` won't know `restaurant_owners`/`is_active` until the
+> migration is applied + regenerated, so those calls go through
+> `src/lib/supabasePending.ts` (a documented typed escape hatch — remove once
+> types are regenerated).
 
 > **"Saved" is not a table.** Saved restaurants live only in browser
-> `localStorage` under the key `fuelo:saved` (see `SavedProvider.tsx`). There is
-> no user-auth / accounts flow yet.
+> `localStorage` under the key `fuelo:saved` (see `SavedProvider.tsx`).
 
 ### Supabase client
 
@@ -220,10 +254,15 @@ and `restaurant_name` null or ≤ 200 chars. No public SELECT. Written by
 
 | Route | File | What it is |
 | --- | --- | --- |
-| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (FUELO logo, Saved + profile links), waitlist banner, "Trending near you" cuisine chips (gradient cards w/ emoji), search bar (restaurants **and** dishes), **Map/List toggle**. Map = Leaflet with green pins + live geolocation; tapping a pin shows a bottom preview card → "View menu". List = restaurant cards. Footer disclaimer that nutrition is AI-estimated. |
-| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`. Ends with the **"Own this restaurant?"** claim card and disclaimer. |
-| `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. |
-| `/profile` | `routes/profile.tsx` | **Profile** — placeholder. Goal-based filters + location-aware discovery "coming soon"; links back to the waitlist. |
+| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`). Map = Leaflet with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu". List = restaurant cards. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
+| `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Bottom nav present. |
+| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting. Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
+| `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
+| `/profile` | `routes/profile.tsx` | **Profile** — placeholder. Goal-based filters + location-aware discovery "coming soon"; links back to the waitlist. Bottom nav present. |
+| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) lists the restaurant's dishes grouped like the public page with a "X of Y verified" bar and three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
+| `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. No bottom nav. |
+
+**Bottom navigation** (`BottomNav.tsx`) — persistent 4-tab bar (Discover / Feed / Saved / Profile) rendered by each of those 4 route files (not by `__root.tsx`, so the restaurant detail page can opt out). Active tab is green with a small dot indicator + bold label.
 
 **Email captures (two):**
 1. **Waitlist banner** (`WaitlistBanner.tsx`) on Discover → inserts into
@@ -273,8 +312,13 @@ CSS variables and Tailwind semantic classes (`bg-background`, `text-primary`,
 
 - CARTO **light** basemap, tiles nudged warm via
   `filter: sepia(0.10) saturate(1.05) brightness(1.02)` to match the cream theme.
-- Custom **green teardrop pins** (`.fuelo-pin`, active variant enlarges + white
-  outline). User location is a **blue dot** (`.fuelo-user-dot`, `#2563eb`).
+- Restaurant pins use the **Fuelo Ring mark** (`.fuelo-ring-pin`) — a small
+  circular pin (white disc, thick green ring border, green center dot; no
+  teardrop), echoing `ConfidenceRing`. Active pin is larger with a white outer
+  halo ring. Optional corner badge (`.fuelo-ring-badge`, dark pill/white text)
+  shows "Verified" / "New" / "Top Rated" (priority in that order, one max).
+  User location is a **blue dot** (`.fuelo-user-dot`, `#2563eb`), always
+  visually distinct from restaurant pins.
 
 **Verification / confidence language (consistent across the app):**
 

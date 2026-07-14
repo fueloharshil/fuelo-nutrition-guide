@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Check, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,9 +35,26 @@ export function ClaimRestaurantCard({ defaultName }: { defaultName?: string }) {
   return (
     <section className="mx-4 sm:mx-6 mt-8 rounded-2xl bg-card border border-primary/15 p-5 shadow-[var(--shadow-card)]">
       {status === "done" ? (
-        <p className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
-          <Check className="h-4 w-4" /> Thanks — we'll be in touch
-        </p>
+        <div>
+          <p className="text-base font-bold tracking-tight text-primary inline-flex items-center gap-1.5">
+            <Mail className="h-4 w-4" /> Check your email to verify
+          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Thanks — we've logged your claim. We'll email{" "}
+            <span className="font-medium text-foreground">{email.trim().toLowerCase()}</span> a link
+            to confirm you own this restaurant. Once approved, you can verify your menu's nutrition.
+          </p>
+          <Link
+            to="/verify"
+            className="mt-3 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground h-11 px-5 text-sm font-semibold hover:opacity-95 transition"
+          >
+            Go to restaurant login
+          </Link>
+          <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1">
+            <Check className="h-3 w-3" /> Email verification isn't wired up yet — for now we'll
+            approve your claim manually.
+          </p>
+        </div>
       ) : (
         <>
           <h3 className="text-base font-bold tracking-tight">Own this restaurant?</h3>

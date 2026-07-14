@@ -9,11 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as SavedRouteImport } from './routes/saved'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as FeedRouteImport } from './routes/feed'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RestaurantsIdRouteImport } from './routes/restaurants.$id'
 
+const VerifyRoute = VerifyRouteImport.update({
+  id: '/verify',
+  path: '/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SavedRoute = SavedRouteImport.update({
   id: '/saved',
   path: '/saved',
@@ -22,6 +30,16 @@ const SavedRoute = SavedRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeedRoute = FeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,40 +55,81 @@ const RestaurantsIdRoute = RestaurantsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/feed': typeof FeedRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
+  '/verify': typeof VerifyRoute
   '/restaurants/$id': typeof RestaurantsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/feed': typeof FeedRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
+  '/verify': typeof VerifyRoute
   '/restaurants/$id': typeof RestaurantsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/feed': typeof FeedRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
+  '/verify': typeof VerifyRoute
   '/restaurants/$id': typeof RestaurantsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/profile' | '/saved' | '/restaurants/$id'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/feed'
+    | '/profile'
+    | '/saved'
+    | '/verify'
+    | '/restaurants/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/profile' | '/saved' | '/restaurants/$id'
-  id: '__root__' | '/' | '/profile' | '/saved' | '/restaurants/$id'
+  to:
+    | '/'
+    | '/admin'
+    | '/feed'
+    | '/profile'
+    | '/saved'
+    | '/verify'
+    | '/restaurants/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/feed'
+    | '/profile'
+    | '/saved'
+    | '/verify'
+    | '/restaurants/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  FeedRoute: typeof FeedRoute
   ProfileRoute: typeof ProfileRoute
   SavedRoute: typeof SavedRoute
+  VerifyRoute: typeof VerifyRoute
   RestaurantsIdRoute: typeof RestaurantsIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/saved': {
       id: '/saved'
       path: '/saved'
@@ -83,6 +142,20 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feed': {
+      id: '/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -104,8 +177,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  FeedRoute: FeedRoute,
   ProfileRoute: ProfileRoute,
   SavedRoute: SavedRoute,
+  VerifyRoute: VerifyRoute,
   RestaurantsIdRoute: RestaurantsIdRoute,
 }
 export const routeTree = rootRouteImport
