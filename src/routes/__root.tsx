@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SavedProvider } from "../components/SavedProvider";
+import { FiltersProvider } from "../components/FiltersProvider";
 
 function NotFoundComponent() {
   return (
@@ -136,7 +137,9 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <SavedProvider>
-        <Outlet />
+        <FiltersProvider>
+          <Outlet />
+        </FiltersProvider>
       </SavedProvider>
     </QueryClientProvider>
   );

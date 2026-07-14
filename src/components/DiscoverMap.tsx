@@ -31,6 +31,7 @@ export default function DiscoverMap({
   const markersRef = useRef<Record<string, any>>({});
   const userMarkerRef = useRef<any>(null);
   const LRef = useRef<any>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
   const fitDoneRef = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -72,6 +73,21 @@ export default function DiscoverMap({
 
       requestAnimationFrame(() => map.invalidateSize());
       setTimeout(() => map.invalidateSize(), 250);
+
+      // Redraw whenever the container's box actually changes size. This is the
+      // reliable fix for the map rendering blank until a manual resize: it
+      // covers the container settling to its real height after the desktop
+      // layout mounts, remounting when switching back to Map view, and any
+      // size change that isn't a window-level "resize" event.
+      if (typeof ResizeObserver !== "undefined" && containerRef.current) {
+        let roRaf = 0;
+        const ro = new ResizeObserver(() => {
+          cancelAnimationFrame(roRaf);
+          roRaf = requestAnimationFrame(() => mapRef.current?.invalidateSize());
+        });
+        ro.observe(containerRef.current);
+        roRef.current = ro;
+      }
     })();
 
     const onResize = () => mapRef.current?.invalidateSize();
@@ -80,6 +96,8 @@ export default function DiscoverMap({
     return () => {
       cancelled = true;
       window.removeEventListener("resize", onResize);
+      roRef.current?.disconnect();
+      roRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;

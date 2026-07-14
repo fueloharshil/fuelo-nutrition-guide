@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceRing } from "@/components/ConfidenceRing";
 import { useSaved } from "@/components/SavedProvider";
 import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
+import { useFilters } from "@/components/FiltersProvider";
+import { dishMatchesFilters, hasDishLevelFilters } from "@/lib/filters";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -49,6 +51,11 @@ function RestaurantPage() {
   const { data } = useSuspenseQuery(restaurantQuery(id));
   const router = useRouter();
   const { isSaved, toggle } = useSaved();
+  const { filters } = useFilters();
+  const filtersOn = hasDishLevelFilters(filters);
+  const matchCount = filtersOn
+    ? data.items.filter((it) => dishMatchesFilters(it, filters)).length
+    : 0;
 
   const r = data.restaurant;
   if (!r) {
@@ -110,6 +117,25 @@ function RestaurantPage() {
         </div>
       </header>
 
+      {filtersOn && (
+        <div className="px-4 sm:px-6 mt-6">
+          <div className="flex w-full items-start gap-2 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm">
+            <SlidersHorizontal className="mt-0.5 h-4 w-4 flex-none text-primary" />
+            <span>
+              {matchCount > 0 ? (
+                <>
+                  Highlighting{" "}
+                  <strong className="font-semibold text-primary">{matchCount}</strong>{" "}
+                  {matchCount === 1 ? "dish that matches" : "dishes that match"} your filters.
+                </>
+              ) : (
+                <>No dishes here match your current filters.</>
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="px-4 sm:px-6 mt-6 flex items-center justify-between gap-3">
         <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
           Sort dishes
@@ -142,7 +168,11 @@ function RestaurantPage() {
             <ul className="grid gap-3">
               {items.map((item) => (
                 <li key={item.id}>
-                  <DishCard item={item} restaurantVerified={r.verified} />
+                  <DishCard
+                    item={item}
+                    restaurantVerified={r.verified}
+                    highlight={filtersOn && dishMatchesFilters(item, filters)}
+                  />
                 </li>
               ))}
             </ul>
@@ -161,13 +191,31 @@ function RestaurantPage() {
   );
 }
 
-function DishCard({ item, restaurantVerified }: { item: MenuItem; restaurantVerified: boolean }) {
+function DishCard({
+  item,
+  restaurantVerified,
+  highlight = false,
+}: {
+  item: MenuItem;
+  restaurantVerified: boolean;
+  highlight?: boolean;
+}) {
   const verified = item.is_verified || restaurantVerified;
   const price =
     item.price_gbp != null ? `£${Number(item.price_gbp).toFixed(2).replace(/\.00$/, "")}` : null;
 
   return (
-    <article className="bg-card rounded-2xl p-4 shadow-[var(--shadow-card)]">
+    <article
+      className={`rounded-2xl p-4 shadow-[var(--shadow-card)] transition ${
+        highlight ? "bg-accent/40 ring-2 ring-primary/50" : "bg-card"
+      }`}
+    >
+      {highlight && (
+        <div className="mb-2 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+          <Check className="h-3 w-3" />
+          Matches your filters
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-base font-bold tracking-tight leading-snug">{item.name}</h3>
         {price && <span className="text-sm font-semibold tabular-nums">{price}</span>}

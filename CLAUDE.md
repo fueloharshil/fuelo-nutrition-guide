@@ -127,7 +127,8 @@ tables are insert-only for the public.
 | --- | --- | --- |
 | `id` | uuid PK | `gen_random_uuid()` |
 | `name` | text | NOT NULL |
-| `cuisine` | text | nullable |
+| `cuisine` | text | nullable — legacy freeform text, **kept for now** |
+| `cuisines` | text[] | NOT NULL default `'{}'` — structured taxonomy tags (a restaurant can have several). Source of truth for the cuisine filter + trending tiles. Fixed vocabulary in `src/lib/cuisines.ts` (`CUISINE_TAGS`); added in migration `20260714093000_add_restaurant_cuisines`. |
 | `address` | text | nullable |
 | `area` | text | nullable (shown with a pin icon, e.g. "Dalston") |
 | `latitude` | double precision | nullable (map pin) |

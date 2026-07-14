@@ -2,6 +2,7 @@ export type Restaurant = {
   id: string;
   name: string;
   cuisine: string | null;
+  cuisines?: string[] | null;
   address: string | null;
   area: string | null;
   latitude: number | null;

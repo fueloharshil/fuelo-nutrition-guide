@@ -1,14 +1,36 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User } from "lucide-react";
+import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User, SlidersHorizontal } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useFilters } from "@/components/FiltersProvider";
+import { FilterSheet } from "@/components/FilterSheet";
+import {
+  activeFilterCount,
+  anyFilterActive,
+  dishMatchesFilters,
+  hasDishLevelFilters,
+} from "@/lib/filters";
+import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
+import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
 import { WaitlistBanner } from "@/components/WaitlistBanner";
+
+type DiscoverItem = Pick<
+  MenuItem,
+  | "id"
+  | "restaurant_id"
+  | "name"
+  | "calories_min"
+  | "calories_max"
+  | "protein_min"
+  | "protein_max"
+  | "dietary_tags"
+>;
 
 const DEFAULT_CENTER: [number, number] = [51.5462, -0.0755]; // Dalston
 
@@ -17,13 +39,17 @@ const discoverQuery = queryOptions({
   queryFn: async () => {
     const [rests, items] = await Promise.all([
       supabase.from("restaurants").select("*").order("name"),
-      supabase.from("menu_items").select("id,restaurant_id,name"),
+      supabase
+        .from("menu_items")
+        .select(
+          "id,restaurant_id,name,calories_min,calories_max,protein_min,protein_max,dietary_tags",
+        ),
     ]);
     if (rests.error) throw rests.error;
     if (items.error) throw items.error;
     return {
       restaurants: (rests.data ?? []) as Restaurant[],
-      items: (items.data ?? []) as Pick<MenuItem, "id" | "restaurant_id" | "name">[],
+      items: (items.data ?? []) as DiscoverItem[],
     };
   },
 });
@@ -39,9 +65,10 @@ export const Route = createFileRoute("/")({
 
 function Discover() {
   const { data } = useSuspenseQuery(discoverQuery);
+  const { filters, patch } = useFilters();
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
-  const [cuisine, setCuisine] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [selected, setSelected] = useState<Restaurant | null>(null);
@@ -66,19 +93,39 @@ function Discover() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
-  const cuisines = useMemo(() => {
-    const seen = new Set<string>();
-    const list: string[] = [];
+  // Distinct cuisine tags actually present across restaurants, for the
+  // "Trending near you" tiles. Deduped by exact tag (the taxonomy is canonical,
+  // so tiles can never duplicate), ordered by how many restaurants carry each
+  // tag (most common first), then by the taxonomy's own order.
+  const trendingCuisines = useMemo(() => {
+    const counts = new Map<string, number>();
     for (const r of data.restaurants) {
-      const c = (r.cuisine ?? "").trim();
-      if (!c) continue;
-      const key = c.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      list.push(c);
+      for (const tag of restaurantCuisines(r)) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
     }
-    return list.sort();
+    const orderIndex = (tag: string) => {
+      const i = (CUISINE_TAGS as readonly string[]).indexOf(tag);
+      return i === -1 ? CUISINE_TAGS.length : i;
+    };
+    return [...counts.keys()].sort((a, b) => {
+      const byCount = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+      return byCount !== 0 ? byCount : orderIndex(a) - orderIndex(b);
+    });
   }, [data.restaurants]);
+
+  // Restaurants that have at least one dish matching ALL active dish-level
+  // filters (max calories, min protein, dietary). null = no dish-level filter.
+  const matchingRestaurantIds = useMemo(() => {
+    if (!hasDishLevelFilters(filters)) return null;
+    const ids = new Set<string>();
+    for (const it of data.items) {
+      if (!ids.has(it.restaurant_id) && dishMatchesFilters(it, filters)) {
+        ids.add(it.restaurant_id);
+      }
+    }
+    return ids;
+  }, [data.items, filters]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -88,15 +135,18 @@ function Discover() {
         )
       : null;
     return data.restaurants.filter((r) => {
-      if (cuisine && (r.cuisine ?? "").toLowerCase() !== cuisine.toLowerCase()) return false;
+      const tags = restaurantCuisines(r);
+      if (filters.cuisine && !tags.includes(filters.cuisine)) return false;
+      if (matchingRestaurantIds && !matchingRestaurantIds.has(r.id)) return false;
       if (!q) return true;
       return (
         r.name.toLowerCase().includes(q) ||
+        tags.some((c) => c.toLowerCase().includes(q)) ||
         (r.cuisine ?? "").toLowerCase().includes(q) ||
         dishHits!.has(r.id)
       );
     });
-  }, [query, cuisine, data]);
+  }, [query, filters, data, matchingRestaurantIds]);
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -104,25 +154,29 @@ function Discover() {
       <WaitlistBanner />
 
       <TrendingRow
-        cuisines={cuisines}
-        active={cuisine}
-        onSelect={(c) => setCuisine((prev) => (prev === c ? null : c))}
-        onClear={() => setCuisine(null)}
+        cuisines={trendingCuisines}
+        active={filters.cuisine}
+        onSelect={(c) => patch({ cuisine: filters.cuisine === c ? null : c })}
+        onClear={() => patch({ cuisine: null })}
       />
 
       <div className="px-4 pt-3 pb-2 sm:px-6">
         <SearchBar value={query} onChange={setQuery} />
         <div className="mt-3 flex items-center justify-between gap-3">
           <ViewToggle view={view} onChange={setView} />
-          <span className="text-xs text-muted-foreground">
-            {filtered.length} {filtered.length === 1 ? "spot" : "spots"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {filtered.length} {filtered.length === 1 ? "spot" : "spots"}
+            </span>
+            <FilterButton count={activeFilterCount(filters)} onClick={() => setFiltersOpen(true)} />
+          </div>
         </div>
+        <ActiveFiltersRow />
       </div>
 
 
       {view === "map" ? (
-        <div className="relative flex-1 min-h-[calc(100vh-180px)] h-[calc(100vh-180px)] min-h-[400px]">
+        <div className="relative w-full h-[calc(100vh-180px)] min-h-[400px]">
           {hydrated ? (
             <Suspense fallback={<MapSkeleton />}>
               <DiscoverMap
@@ -158,6 +212,12 @@ function Discover() {
       )}
 
       <Disclaimer />
+
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        resultCount={filtered.length}
+      />
     </main>
   );
 }
@@ -197,7 +257,10 @@ const CUISINE_EMOJI: Record<string, string> = {
   "middle eastern": "🥙",
   "middle east": "🥙",
   turkish: "🥙",
+  lebanese: "🥙",
+  persian: "🍢",
   mediterranean: "🫒",
+  greek: "🫒",
   brunch: "🍳",
   breakfast: "🍳",
   "live-fire grill": "🔥",
@@ -205,21 +268,41 @@ const CUISINE_EMOJI: Record<string, string> = {
   grill: "🔥",
   bbq: "🔥",
   bakery: "🥐",
+  dessert: "🍰",
   italian: "🍝",
   pizza: "🍕",
+  spanish: "🥘",
+  portuguese: "🐟",
+  french: "🥖",
+  british: "🥧",
+  european: "🧀",
   sushi: "🍣",
   japanese: "🍣",
+  korean: "🍲",
   ramen: "🍜",
   thai: "🌶️",
+  vietnamese: "🍜",
+  malaysian: "🍛",
+  filipino: "🍢",
   indian: "🍛",
+  pakistani: "🍛",
+  bangladeshi: "🍛",
+  nepalese: "🥟",
+  "sri lankan": "🍛",
   chinese: "🥟",
   mexican: "🌮",
+  caribbean: "🍹",
+  nigerian: "🍲",
+  african: "🍲",
+  ethiopian: "🍲",
   vegan: "🥗",
   vegetarian: "🥗",
+  healthy: "🥗",
+  halal: "🥙",
   seafood: "🦐",
   burger: "🍔",
+  chicken: "🍗",
   american: "🍔",
-  french: "🥖",
   cafe: "☕",
   coffee: "☕",
 };
@@ -262,35 +345,72 @@ function TrendingRow({
       </div>
       <div className="-mx-4 sm:-mx-6 px-4 sm:px-6 overflow-x-auto scrollbar-none">
         <ul className="flex gap-3 pb-1">
-          {cuisines.map((c) => {
-            const isActive = active?.toLowerCase() === c.toLowerCase();
-            return (
-              <li key={c} className="flex-none">
-                <button
-                  onClick={() => onSelect(c)}
-                  className={`relative flex flex-col justify-between w-[140px] h-[92px] rounded-2xl p-3 text-left shadow-[var(--shadow-card)] overflow-hidden transition active:scale-[0.98] ${
-                    isActive
-                      ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                      : "hover:shadow-[var(--shadow-float)]"
-                  }`}
-                  style={{
-                    background:
-                      "linear-gradient(135deg, oklch(0.72 0.14 148) 0%, oklch(0.42 0.11 152) 100%)",
-                  }}
-                >
-                  <span className="text-2xl leading-none" aria-hidden>
-                    {cuisineEmoji(c)}
-                  </span>
-                  <span className="text-white font-bold text-sm leading-tight tracking-tight drop-shadow-sm">
-                    {c}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+          {cuisines.map((c) => (
+            <li key={c} className="flex-none">
+              <CuisineTile
+                cuisine={c}
+                active={active?.toLowerCase() === c.toLowerCase()}
+                onSelect={() => onSelect(c)}
+              />
+            </li>
+          ))}
         </ul>
       </div>
     </section>
+  );
+}
+
+const TILE_W = 144;
+const TILE_H = 112;
+
+function CuisineTile({
+  cuisine,
+  active,
+  onSelect,
+}: {
+  cuisine: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const imageUrl = CUISINE_IMAGES[cuisine];
+  const showImage = !!imageUrl && !imgFailed;
+
+  return (
+    <button
+      onClick={onSelect}
+      aria-pressed={active}
+      className={`group relative flex h-[112px] w-[144px] flex-col justify-end overflow-hidden rounded-2xl text-left shadow-[var(--shadow-card)] transition-shadow duration-200 hover:shadow-[var(--shadow-float)] ${
+        active ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+      }`}
+    >
+      {/* Base layer: on-brand green gradient. Always present, so a missing or
+          failed photo degrades to this instead of a blank tile. */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: "linear-gradient(135deg, oklch(0.72 0.14 148) 0%, oklch(0.42 0.11 152) 100%)",
+        }}
+      />
+      {showImage && (
+        <img
+          src={cuisineImageUrl(imageUrl, TILE_W * 2, TILE_H * 2)}
+          alt=""
+          loading="lazy"
+          onError={() => setImgFailed(true)}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110 group-active:scale-110"
+        />
+      )}
+      {/* Dark gradient overlay so the white label stays readable over any photo. */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
+
+      <span className="absolute left-3 top-3 z-10 text-lg leading-none drop-shadow" aria-hidden>
+        {cuisineEmoji(cuisine)}
+      </span>
+      <span className="relative z-10 px-3 pb-3 text-sm font-bold leading-tight tracking-tight text-white drop-shadow-sm">
+        {cuisine}
+      </span>
+    </button>
   );
 }
 
@@ -327,6 +447,73 @@ function ViewToggle({ view, onChange }: { view: "map" | "list"; onChange: (v: "m
         }`}
       >
         <ListIcon className="h-4 w-4" /> List
+      </button>
+    </div>
+  );
+}
+
+function FilterButton({ count, onClick }: { count: number; onClick: () => void }) {
+  const active = count > 0;
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Filters"
+      className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition active:scale-[0.98] ${
+        active
+          ? "bg-primary text-primary-foreground"
+          : "bg-secondary text-secondary-foreground hover:bg-accent"
+      }`}
+    >
+      <SlidersHorizontal className="h-4 w-4" />
+      <span className="hidden sm:inline">Filters</span>
+      {active && (
+        <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary-foreground px-1 text-[11px] font-bold text-primary">
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ActiveFiltersRow() {
+  const { filters, patch, toggleDietary, reset } = useFilters();
+  if (!anyFilterActive(filters)) return null;
+
+  const chips: { key: string; label: string; onRemove: () => void }[] = [];
+  if (filters.maxCalories != null)
+    chips.push({
+      key: "cal",
+      label: `≤ ${filters.maxCalories} kcal`,
+      onRemove: () => patch({ maxCalories: null }),
+    });
+  if (filters.minProtein != null)
+    chips.push({
+      key: "pro",
+      label: `≥ ${filters.minProtein} g protein`,
+      onRemove: () => patch({ minProtein: null }),
+    });
+  for (const d of filters.dietary)
+    chips.push({ key: `diet-${d}`, label: d, onRemove: () => toggleDietary(d) });
+  if (filters.cuisine != null)
+    chips.push({ key: "cuisine", label: filters.cuisine, onRemove: () => patch({ cuisine: null }) });
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {chips.map((c) => (
+        <button
+          key={c.key}
+          onClick={c.onRemove}
+          className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-80"
+        >
+          {c.label}
+          <X className="h-3 w-3" />
+        </button>
+      ))}
+      <button
+        onClick={reset}
+        className="text-xs font-semibold text-primary underline-offset-2 hover:underline"
+      >
+        Reset filters
       </button>
     </div>
   );
