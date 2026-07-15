@@ -28,6 +28,7 @@ export type Database = {
           fat_max: number | null
           fat_min: number | null
           id: string
+          is_active: boolean
           is_verified: boolean
           menu_id: string | null
           name: string
@@ -51,6 +52,7 @@ export type Database = {
           fat_max?: number | null
           fat_min?: number | null
           id?: string
+          is_active?: boolean
           is_verified?: boolean
           menu_id?: string | null
           name: string
@@ -74,6 +76,7 @@ export type Database = {
           fat_max?: number | null
           fat_min?: number | null
           id?: string
+          is_active?: boolean
           is_verified?: boolean
           menu_id?: string | null
           name?: string
@@ -153,6 +156,35 @@ export type Database = {
           restaurant_name?: string | null
         }
         Relationships: []
+      }
+      restaurant_owners: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          restaurant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          restaurant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          restaurant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_owners_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       restaurants: {
         Row: {
