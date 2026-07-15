@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Plus } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
@@ -12,9 +12,11 @@ import { ConfidenceRing } from "@/components/ConfidenceRing";
 import { useSaved } from "@/components/SavedProvider";
 import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
 import { useFilters } from "@/components/FiltersProvider";
-import { dishMatchesFilters, hasDishLevelFilters } from "@/lib/filters";
+import { dishMatchesFilters, hasDishLevelFilters, midpoint } from "@/lib/filters";
 import { groupByCategory, type SortKey } from "@/lib/menuGrouping";
 import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
+import { useProfile } from "@/components/ProfileProvider";
+import { dishFitsGoal } from "@/lib/profile";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -209,16 +211,32 @@ function DishCard({
   const price =
     item.price_gbp != null ? `£${Number(item.price_gbp).toFixed(2).replace(/\.00$/, "")}` : null;
 
+  const { profile, hasGoal, remainingCalories, isDishLogged, toggleLogDish } = useProfile();
+  const fitsGoal = dishFitsGoal(item, profile, remainingCalories);
+  const logged = isDishLogged(item.id);
+  const cal = midpoint(item.calories_min, item.calories_max);
+  const pro = midpoint(item.protein_min, item.protein_max);
+
   return (
     <article
       className={`rounded-2xl p-4 shadow-[var(--shadow-card)] transition ${
         highlight ? "bg-accent/40 ring-2 ring-primary/50" : "bg-card"
       }`}
     >
-      {highlight && (
-        <div className="mb-2 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
-          <Check className="h-3 w-3" />
-          Matches your filters
+      {(highlight || fitsGoal) && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {highlight && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <Check className="h-3 w-3" />
+              Matches your filters
+            </span>
+          )}
+          {fitsGoal && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <Target className="h-3 w-3" />
+              Fits your goal
+            </span>
+          )}
         </div>
       )}
       <div className="flex items-start justify-between gap-3">
@@ -250,6 +268,25 @@ function DishCard({
         <StatusBadge verified={verified} />
         <ConfidenceRing confidence={item.confidence} verified={verified} />
       </div>
+      <button
+        onClick={() => toggleLogDish({ id: item.id, calories: cal ?? 0, protein: pro ?? 0 })}
+        aria-pressed={logged}
+        className={`mt-3 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition active:scale-[0.98] ${
+          logged
+            ? "bg-primary/15 text-primary"
+            : "bg-secondary text-secondary-foreground hover:bg-accent"
+        }`}
+      >
+        {logged ? (
+          <>
+            <Check className="h-4 w-4" /> Logged — tap to undo
+          </>
+        ) : (
+          <>
+            <Plus className="h-4 w-4" /> Log this dish
+          </>
+        )}
+      </button>
     </article>
   );
 }

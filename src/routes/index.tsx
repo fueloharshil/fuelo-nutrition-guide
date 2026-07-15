@@ -18,6 +18,7 @@ import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
 import { BottomNav } from "@/components/BottomNav";
+import { DailyBudgetCard } from "@/components/DailyBudgetCard";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
 import { WaitlistBanner } from "@/components/WaitlistBanner";
@@ -174,6 +175,7 @@ function Discover() {
     <main className="min-h-screen flex flex-col">
       <Header />
       <WaitlistBanner />
+      <DailyBudgetCard />
 
       <TrendingRow
         cuisines={trendingCuisines}

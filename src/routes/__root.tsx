@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SavedProvider } from "../components/SavedProvider";
 import { FiltersProvider } from "../components/FiltersProvider";
+import { ProfileProvider } from "../components/ProfileProvider";
 
 function NotFoundComponent() {
   return (
@@ -138,7 +139,9 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SavedProvider>
         <FiltersProvider>
-          <Outlet />
+          <ProfileProvider>
+            <Outlet />
+          </ProfileProvider>
         </FiltersProvider>
       </SavedProvider>
     </QueryClientProvider>
