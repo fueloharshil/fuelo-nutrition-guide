@@ -96,6 +96,9 @@ GitHub.
 │   │   ├── cuisines.ts            # Fixed cuisine taxonomy (CUISINE_TAGS) + grouped filter UI order
 │   │   ├── cuisineImages.ts       # Verified Unsplash photo URLs for "Trending near you" tiles
 │   │   ├── discoverBadges.ts      # Map-pin badge logic: Verified > New > Top Rated (placeholder)
+│   │   ├── menuGrouping.ts        # groupByCategory(): bucket-sorts categories (see menu_categories below)
+│   │   ├── categoryTypes.ts       # Fetches the category_name → category_type map, degrades to {} pre-migration
+│   │   ├── supabasePending.ts     # Typed escape hatch for tables/columns not yet in generated types.ts
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
 │   ├── hooks/use-mobile.tsx
@@ -169,7 +172,7 @@ RLS: **public SELECT**. Indexed on `restaurant_id`.
 | `menu_id` | uuid FK → menus(id) | nullable, ON DELETE CASCADE |
 | `restaurant_id` | uuid FK → restaurants(id) | NOT NULL, ON DELETE CASCADE |
 | `name` | text | NOT NULL |
-| `category` | text | nullable (grouped/ordered on the restaurant page) |
+| `category` | text | nullable (grouped/ordered on the restaurant page via `menu_categories`, see below) |
 | `description` | text | nullable |
 | `price_gbp` | numeric | nullable (rendered as £) |
 | `calories_min` / `calories_max` | integer | nutrition range (kcal) |
@@ -213,6 +216,35 @@ RLS: **public INSERT**, WITH CHECK enforcing email regex, `email ≤ 255`,
 and `restaurant_name` null or ≤ 200 chars. Written by `ClaimRestaurantCard.tsx`.
 The admin (see below) can also SELECT leads to onboard from them.
 
+### `menu_categories`  — category name → display bucket
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | |
+| `category_name` | text | NOT NULL, unique (case-insensitive) — exact string as stored in `menu_items.category` |
+| `category_type` | text | CHECK in (`starter`, `main`, `side`, `dessert`, `drink_hot`, `drink_cold`, `drink_alcoholic`) |
+| `created_at` | timestamptz | default `now()` |
+
+RLS: **public SELECT**; admin (see below) can INSERT/UPDATE/DELETE. Added in
+migration `20260715120000_menu_category_types`, backfilled with every
+category name actually in use across the 4 seed restaurants (verified
+against real dish portion sizes/prices, not guessed from the name — e.g.
+"Sarnies"/"Wraps"/"Sabih" are `main`, not `starter`, since they're full-size
+£12–15 portions).
+
+> **Category display order.** `groupByCategory()` in `src/lib/menuGrouping.ts`
+> looks up each category's bucket in this table and sorts categories by
+> bucket (`starter → main → side → dessert → drink_hot → drink_cold →
+> drink_alcoholic`); within a bucket, categories keep their original menu
+> order (a stable sort over items fetched **without** an `ORDER BY category`
+> clause — ordering by category in SQL would destroy that natural order).
+> **Adding a new category needs one row in this table, not a code change** —
+> add it via the Supabase table editor, or ask Claude to add a migration.
+> An unmapped category still displays, just sorted after every known bucket,
+> so a missing tag never hides a dish. Pre-migration (or if the table is
+> ever unreachable), `categoryTypes.ts` degrades to an empty map rather than
+> throwing — categories fall back to whatever order they were fetched in.
+
 ### `restaurant_owners`  — who may verify which restaurant
 
 | Column | Type | Notes |
@@ -235,6 +267,13 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 > migration is applied + regenerated, so those calls go through
 > `src/lib/supabasePending.ts` (a documented typed escape hatch — remove once
 > types are regenerated).
+>
+> **Supabase Auth URL config** (done, 2026-07-14) — Authentication → URL
+> Configuration: Site URL `https://fuelo-nutrition-guide.lovable.app`; Redirect
+> URLs `https://fuelo-nutrition-guide.lovable.app/**` and
+> `http://localhost:8080/**` (lets magic links resolve when testing locally).
+> Without this the `/verify` and `/admin` login links render but don't
+> complete sign-in.
 
 > **"Saved" is not a table.** Saved restaurants live only in browser
 > `localStorage` under the key `fuelo:saved` (see `SavedProvider.tsx`).

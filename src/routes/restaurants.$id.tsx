@@ -14,25 +14,26 @@ import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
 import { useFilters } from "@/components/FiltersProvider";
 import { dishMatchesFilters, hasDishLevelFilters } from "@/lib/filters";
 import { groupByCategory, type SortKey } from "@/lib/menuGrouping";
+import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
     queryKey: ["restaurant", id],
     queryFn: async () => {
-      const [r, items] = await Promise.all([
+      const [r, items, categoryTypeMap] = await Promise.all([
         supabase.from("restaurants").select("*").eq("id", id).maybeSingle(),
-        supabase
-          .from("menu_items")
-          .select("*")
-          .eq("restaurant_id", id)
-          .order("category", { ascending: true, nullsFirst: false })
-          .order("name"),
+        // Not ordered by category: category display order is a bucket sort
+        // (see groupByCategory), which needs the items in their natural menu
+        // order to preserve "original order" within a bucket.
+        supabase.from("menu_items").select("*").eq("restaurant_id", id),
+        fetchCategoryTypeMap(),
       ]);
       if (r.error) throw r.error;
       if (items.error) throw items.error;
       return {
         restaurant: r.data as Restaurant | null,
         items: (items.data ?? []) as MenuItem[],
+        categoryTypeMap,
       };
     },
   });
@@ -75,7 +76,7 @@ function RestaurantPage() {
 
   const saved = isSaved(r.id);
   const [sort, setSort] = useState<SortKey>("none");
-  const grouped = groupByCategory(activeItems, sort);
+  const grouped = groupByCategory(activeItems, sort, data.categoryTypeMap);
 
 
 

@@ -7,7 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { dbPending } from "@/lib/supabasePending";
 import type { MenuItem, Restaurant, RestaurantOwner } from "@/lib/fuelo-types";
 import { formatRange } from "@/lib/fuelo-types";
-import { groupByCategory } from "@/lib/menuGrouping";
+import { groupByCategory, type CategoryTypeMap } from "@/lib/menuGrouping";
+import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 import { useOwnerAuth } from "@/hooks/useOwnerAuth";
 
 export const Route = createFileRoute("/verify")({
@@ -137,6 +138,7 @@ type OwnerData = {
   owner: RestaurantOwner | null;
   restaurant: Restaurant | null;
   items: MenuItem[];
+  categoryTypeMap: CategoryTypeMap;
 };
 
 function OwnerDashboard({ email }: { email: string }) {
@@ -155,17 +157,15 @@ function OwnerDashboard({ email }: { email: string }) {
       const owner = (ownerRes.data ?? null) as RestaurantOwner | null;
 
       if (!owner || !owner.restaurant_id) {
-        return { owner, restaurant: null, items: [] };
+        return { owner, restaurant: null, items: [], categoryTypeMap: new Map() };
       }
 
-      const [rRes, itemsRes] = await Promise.all([
+      const [rRes, itemsRes, categoryTypeMap] = await Promise.all([
         supabase.from("restaurants").select("*").eq("id", owner.restaurant_id).maybeSingle(),
-        supabase
-          .from("menu_items")
-          .select("*")
-          .eq("restaurant_id", owner.restaurant_id)
-          .order("category", { ascending: true, nullsFirst: false })
-          .order("name"),
+        // Not ordered by category — see the matching comment in
+        // restaurants.$id.tsx; groupByCategory does the bucket sort.
+        supabase.from("menu_items").select("*").eq("restaurant_id", owner.restaurant_id),
+        fetchCategoryTypeMap(),
       ]);
       if (rRes.error) throw rRes.error;
       if (itemsRes.error) throw itemsRes.error;
@@ -173,6 +173,7 @@ function OwnerDashboard({ email }: { email: string }) {
         owner,
         restaurant: (rRes.data ?? null) as Restaurant | null,
         items: (itemsRes.data ?? []) as MenuItem[],
+        categoryTypeMap,
       };
     },
   });
@@ -212,7 +213,7 @@ function OwnerDashboard({ email }: { email: string }) {
   const verifiedCount = activeItems.filter((it) => it.is_verified).length;
   const total = activeItems.length;
   const pct = total > 0 ? Math.round((verifiedCount / total) * 100) : 0;
-  const grouped = groupByCategory(activeItems, "none");
+  const grouped = groupByCategory(activeItems, "none", data.categoryTypeMap);
 
   return (
     <div className="mt-6">

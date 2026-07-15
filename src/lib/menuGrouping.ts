@@ -1,36 +1,36 @@
 import type { MenuItem } from "@/lib/fuelo-types";
 
-// Category display order for a restaurant menu. Shared so the public restaurant
-// page and the owner verify dashboard group/order dishes identically.
-export const CATEGORY_ORDER = [
-  "Snacks",
-  "Cold Meze",
-  "Hot Meze",
-  "Small Plates",
-  "Cold Small Plates",
-  "Hot Small Plates",
-  "Sarnies",
-  "Wraps",
-  "Large Plates",
-  "Chops & Cuts",
-  "Mixed Meze",
-  "Brunch",
-  "Breakfast",
-  "Sides",
-  "Vegetarian",
-  "Feasting Menu",
-  "Sweet Things",
-  "Dessert",
-  "Housemade Softs",
-  "Softs",
-  "Hot Drinks",
-  "Cocktails",
-  "Beer & Cider",
-  "Wine",
-  "Spirits",
-  "Digestifs",
-  "Fortified",
+// Category display order for a restaurant menu, shared so the public
+// restaurant page and the owner verify dashboard group/order dishes
+// identically.
+//
+// Categories are bucketed into one of these types (from the menu_categories
+// table — see migration 20260715120000_menu_category_types) and displayed in
+// this fixed order. Within a bucket, categories keep their original menu
+// order (see groupByCategory below) rather than being re-sorted.
+//
+// Adding a new category later needs a row in menu_categories, not a code
+// change — see src/lib/categoryTypes.ts.
+export type CategoryType =
+  | "starter"
+  | "main"
+  | "side"
+  | "dessert"
+  | "drink_hot"
+  | "drink_cold"
+  | "drink_alcoholic";
+
+export const BUCKET_ORDER: CategoryType[] = [
+  "starter",
+  "main",
+  "side",
+  "dessert",
+  "drink_hot",
+  "drink_cold",
+  "drink_alcoholic",
 ];
+
+export type CategoryTypeMap = Map<string, CategoryType>;
 
 export type SortKey = "none" | "protein" | "calories" | "ratio";
 
@@ -56,9 +56,24 @@ function dishComparator(sort: SortKey) {
   };
 }
 
+/**
+ * Groups dishes by category and orders the categories by bucket
+ * (starter → main → side → dessert → drink_hot → drink_cold →
+ * drink_alcoholic), using `categoryTypeMap` (category name, lowercased →
+ * bucket) to look up each category's bucket.
+ *
+ * Within a bucket, categories keep the order they first appear in `items` —
+ * callers should fetch items WITHOUT ordering by category, so that order
+ * reflects the menu's natural/insertion order rather than an arbitrary one.
+ * This relies on Array.prototype.sort being stable (guaranteed since ES2019).
+ *
+ * A category with no entry in `categoryTypeMap` sorts after every known
+ * bucket (better to show it late than to silently drop it or guess wrong).
+ */
 export function groupByCategory(
   items: MenuItem[],
   sort: SortKey = "none",
+  categoryTypeMap: CategoryTypeMap = new Map(),
 ): [string | null, MenuItem[]][] {
   const map = new Map<string | null, MenuItem[]>();
   for (const it of items) {
@@ -66,20 +81,19 @@ export function groupByCategory(
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(it);
   }
-  if (sort !== "none") {
-    for (const [, arr] of map) arr.sort(dishComparator(sort));
+  for (const [, arr] of map) {
+    if (sort !== "none") {
+      arr.sort(dishComparator(sort));
+    } else {
+      arr.sort((a, b) => a.name.localeCompare(b.name));
+    }
   }
-  const orderIndex = (key: string | null) => {
-    if (key == null) return CATEGORY_ORDER.length + 1;
-    const i = CATEGORY_ORDER.findIndex((c) => c.toLowerCase() === key.toLowerCase());
-    return i === -1 ? CATEGORY_ORDER.length : i;
+  const bucketIndex = (key: string | null) => {
+    if (key == null) return BUCKET_ORDER.length + 1;
+    const type = categoryTypeMap.get(key.toLowerCase());
+    if (!type) return BUCKET_ORDER.length;
+    const i = BUCKET_ORDER.indexOf(type);
+    return i === -1 ? BUCKET_ORDER.length : i;
   };
-  return Array.from(map.entries()).sort(([a], [b]) => {
-    const ai = orderIndex(a);
-    const bi = orderIndex(b);
-    if (ai !== bi) return ai - bi;
-    const as = a ?? "";
-    const bs = b ?? "";
-    return as.localeCompare(bs);
-  });
+  return Array.from(map.entries()).sort(([a], [b]) => bucketIndex(a) - bucketIndex(b));
 }
