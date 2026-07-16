@@ -14,6 +14,8 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SavedProvider } from "../components/SavedProvider";
 import { FiltersProvider } from "../components/FiltersProvider";
 import { ProfileProvider } from "../components/ProfileProvider";
+import { CompareProvider } from "../components/CompareProvider";
+import { CompareLauncher } from "../components/CompareLauncher";
 
 function NotFoundComponent() {
   return (
@@ -140,7 +142,10 @@ function RootComponent() {
       <SavedProvider>
         <FiltersProvider>
           <ProfileProvider>
-            <Outlet />
+            <CompareProvider>
+              <Outlet />
+              <CompareLauncher />
+            </CompareProvider>
           </ProfileProvider>
         </FiltersProvider>
       </SavedProvider>

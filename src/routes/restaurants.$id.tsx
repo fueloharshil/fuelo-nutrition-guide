@@ -17,6 +17,8 @@ import { groupByCategory, type SortKey } from "@/lib/menuGrouping";
 import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 import { useProfile } from "@/components/ProfileProvider";
 import { dishFitsGoal } from "@/lib/profile";
+import { CompareToggleButton } from "@/components/CompareToggleButton";
+import { toCompareItem } from "@/lib/compare";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -177,6 +179,7 @@ function RestaurantPage() {
                 <li key={item.id}>
                   <DishCard
                     item={item}
+                    restaurantName={r.name}
                     restaurantVerified={r.verified}
                     highlight={filtersOn && dishMatchesFilters(item, filters)}
                   />
@@ -200,10 +203,12 @@ function RestaurantPage() {
 
 function DishCard({
   item,
+  restaurantName,
   restaurantVerified,
   highlight = false,
 }: {
   item: MenuItem;
+  restaurantName: string;
   restaurantVerified: boolean;
   highlight?: boolean;
 }) {
@@ -268,25 +273,28 @@ function DishCard({
         <StatusBadge verified={verified} />
         <ConfidenceRing confidence={item.confidence} verified={verified} />
       </div>
-      <button
-        onClick={() => toggleLogDish({ id: item.id, calories: cal ?? 0, protein: pro ?? 0 })}
-        aria-pressed={logged}
-        className={`mt-3 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition active:scale-[0.98] ${
-          logged
-            ? "bg-primary/15 text-primary"
-            : "bg-secondary text-secondary-foreground hover:bg-accent"
-        }`}
-      >
-        {logged ? (
-          <>
-            <Check className="h-4 w-4" /> Logged — tap to undo
-          </>
-        ) : (
-          <>
-            <Plus className="h-4 w-4" /> Log this dish
-          </>
-        )}
-      </button>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={() => toggleLogDish({ id: item.id, calories: cal ?? 0, protein: pro ?? 0 })}
+          aria-pressed={logged}
+          className={`inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition active:scale-[0.98] ${
+            logged
+              ? "bg-primary/15 text-primary"
+              : "bg-secondary text-secondary-foreground hover:bg-accent"
+          }`}
+        >
+          {logged ? (
+            <>
+              <Check className="h-4 w-4" /> Logged — tap to undo
+            </>
+          ) : (
+            <>
+              <Plus className="h-4 w-4" /> Log this dish
+            </>
+          )}
+        </button>
+        <CompareToggleButton item={toCompareItem(item, restaurantName)} />
+      </div>
     </article>
   );
 }

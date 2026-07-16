@@ -80,6 +80,10 @@ GitHub.
 │   │   ├── FilterSheet.tsx        # Discover filter bottom-sheet UI, grouped cuisine taxonomy
 │   │   ├── ProfileProvider.tsx    # Context + localStorage for daily goal/dietary pref + today's log
 │   │   ├── DailyBudgetCard.tsx    # "Today's budget" card on Discover (calories/protein remaining)
+│   │   ├── CompareProvider.tsx    # Context (session-only) for the 2-3 dish "Compare" selection
+│   │   ├── CompareToggleButton.tsx# Small "+ Compare" pill on a dish card, used on 2 different pages
+│   │   ├── CompareLauncher.tsx    # Floating "Compare (N)" button, mounted once in __root.tsx
+│   │   ├── CompareSheet.tsx       # Side-by-side compare table modal (opened by CompareLauncher)
 │   │   ├── WaitlistBanner.tsx     # Email capture → user_waitlist
 │   │   ├── ClaimRestaurantCard.tsx# Email capture → restaurant_leads ("Own this restaurant?")
 │   │   ├── NutritionChips.tsx     # kcal / P / C / F pills from a menu item
@@ -102,6 +106,7 @@ GitHub.
 │   │   ├── categoryTypes.ts       # Fetches the category_name → category_type map, degrades to {} pre-migration
 │   │   ├── supabasePending.ts     # Typed escape hatch for tables/columns not yet in generated types.ts
 │   │   ├── profile.ts             # Goal/dietary-preference types, per-goal defaults, dishFitsGoal()
+│   │   ├── compare.ts             # CompareItem type + toCompareItem() snapshot helper
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
 │   ├── hooks/use-mobile.tsx
@@ -294,6 +299,17 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 > today and (if a dietary preference is set) its tags match — see
 > `dishFitsGoal()`.
 
+> **Compare is session-only, not persisted.** Up to `MAX_COMPARE` (3) dishes,
+> selectable via `CompareToggleButton` on any dish card (restaurant page +
+> Feed) — a full snapshot (`CompareItem`, not just an id) is captured at
+> selection time via `toCompareItem()`, since dishes from other restaurants
+> aren't loaded in the current page's data. Unlike Saved/profile this resets
+> on reload, matching Discover's filters — a comparison is a transient
+> browsing tool, not a durable preference. `CompareLauncher` (floating
+> "Compare (N)" button, bottom-**left** to avoid the map's bottom-right
+> recenter/zoom controls) is mounted once in `__root.tsx` so selections
+> persist across client-side navigation between pages.
+
 ### Supabase client
 
 - `src/integrations/supabase/client.ts` is **auto-generated — don't edit by hand**.
@@ -310,8 +326,8 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 | Route | File | What it is |
 | --- | --- | --- |
 | `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, **"Today's budget" card** (`DailyBudgetCard`, calories/protein remaining today, or a "set your daily goal" CTA if none set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`). Map = Leaflet with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu". List = restaurant cards. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
-| `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Bottom nav present. |
-| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, "Fits your goal" tag, and a **"Log this dish" / "Logged — tap to undo"** button that adds/removes the dish from today's budget. Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
+| `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Each dish card has a **"+ Compare"** toggle. Bottom nav present. |
+| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, "Fits your goal" tag, a **"Log this dish" / "Logged — tap to undo"** button that adds/removes the dish from today's budget, and a **"+ Compare"** toggle (see Compare below). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below). Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
 | `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) lists the restaurant's dishes grouped like the public page with a "X of Y verified" bar and three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |

@@ -9,6 +9,8 @@ import { midpoint } from "@/lib/filters";
 import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
 import { BottomNav } from "@/components/BottomNav";
+import { CompareToggleButton } from "@/components/CompareToggleButton";
+import { toCompareItem } from "@/lib/compare";
 
 const feedQuery = queryOptions({
   queryKey: ["feed"],
@@ -175,8 +177,9 @@ function DishRow({
               <div className="mt-2">
                 <NutritionChips item={item} />
               </div>
-              <div className="mt-2">
+              <div className="mt-2 flex items-center justify-between gap-2">
                 <StatusBadge verified={item.is_verified} />
+                <CompareToggleButton item={toCompareItem(item, restaurant?.name ?? "")} />
               </div>
             </Link>
           </li>
