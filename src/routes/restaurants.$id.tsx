@@ -1,11 +1,12 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Plus, Share2 } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
 import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
+import { formatRange } from "@/lib/fuelo-types";
 import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceRing } from "@/components/ConfidenceRing";
@@ -19,6 +20,8 @@ import { useProfile } from "@/components/ProfileProvider";
 import { dishFitsGoal } from "@/lib/profile";
 import { CompareToggleButton } from "@/components/CompareToggleButton";
 import { toCompareItem } from "@/lib/compare";
+import { ShareButton } from "@/components/ShareButton";
+import type { ShareCardInput } from "@/lib/shareCard";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -43,6 +46,14 @@ const restaurantQuery = (id: string) =>
   });
 
 export const Route = createFileRoute("/restaurants/$id")({
+  // ?dish=<id> — set when arriving via a shared dish link, so we can scroll
+  // to and briefly highlight that dish once the page renders. Genuinely
+  // optional (the key is omitted, not present-but-undefined) so other pages
+  // can keep linking here without passing a `search` prop.
+  validateSearch: (search: Record<string, unknown>): { dish?: string } => {
+    const dish = typeof search.dish === "string" ? search.dish : undefined;
+    return dish ? { dish } : {};
+  },
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(restaurantQuery(params.id)),
   component: RestaurantPage,
@@ -54,6 +65,8 @@ export const Route = createFileRoute("/restaurants/$id")({
 
 function RestaurantPage() {
   const { id } = Route.useParams();
+  const { dish: sharedDishId } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
   const { data } = useSuspenseQuery(restaurantQuery(id));
   const router = useRouter();
   const { isSaved, toggle } = useSaved();
@@ -81,6 +94,31 @@ function RestaurantPage() {
   const saved = isSaved(r.id);
   const [sort, setSort] = useState<SortKey>("none");
   const grouped = groupByCategory(activeItems, sort, data.categoryTypeMap);
+
+  // Arrived via a shared dish link (?dish=<id>) — scroll to it and briefly
+  // highlight it so the recipient can immediately see what was shared.
+  // Deliberately NOT tracked as separate component state: the restaurant
+  // query can refetch and re-suspend in the background (e.g. StrictMode's
+  // double-invoke in dev), which remounts this subtree and would silently
+  // wipe a plain useState. Reading straight from the URL search param — the
+  // one stable source of truth that survives a remount — doesn't have that
+  // problem. "Temporary" is implemented by clearing the param from the URL
+  // itself after a delay, rather than clearing local state.
+  useEffect(() => {
+    if (!sharedDishId) return;
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`dish-${sharedDishId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    const clearTimer = setTimeout(() => {
+      navigate({ search: (prev) => ({ ...prev, dish: undefined }), replace: true });
+    }, 3500);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [sharedDishId, navigate]);
 
 
 
@@ -176,12 +214,15 @@ function RestaurantPage() {
             </h2>
             <ul className="grid gap-3">
               {items.map((item) => (
-                <li key={item.id}>
+                <li key={item.id} id={`dish-${item.id}`}>
                   <DishCard
                     item={item}
+                    restaurantId={r.id}
                     restaurantName={r.name}
+                    restaurantArea={r.area}
                     restaurantVerified={r.verified}
                     highlight={filtersOn && dishMatchesFilters(item, filters)}
+                    shared={item.id === sharedDishId}
                   />
                 </li>
               ))}
@@ -203,14 +244,20 @@ function RestaurantPage() {
 
 function DishCard({
   item,
+  restaurantId,
   restaurantName,
+  restaurantArea,
   restaurantVerified,
   highlight = false,
+  shared = false,
 }: {
   item: MenuItem;
+  restaurantId: string;
   restaurantName: string;
+  restaurantArea: string | null;
   restaurantVerified: boolean;
   highlight?: boolean;
+  shared?: boolean;
 }) {
   const verified = item.is_verified || restaurantVerified;
   const price =
@@ -222,14 +269,33 @@ function DishCard({
   const cal = midpoint(item.calories_min, item.calories_max);
   const pro = midpoint(item.protein_min, item.protein_max);
 
+  const shareCardInput: ShareCardInput = {
+    dishName: item.name,
+    restaurantName,
+    area: restaurantArea,
+    price,
+    verified,
+    calories: formatRange(item.calories_min, item.calories_max, " kcal"),
+    protein: formatRange(item.protein_min, item.protein_max, "g"),
+    carbs: formatRange(item.carbs_min, item.carbs_max, "g"),
+    fat: formatRange(item.fat_min, item.fat_max, "g"),
+    dietaryTags: item.dietary_tags ?? [],
+  };
+
   return (
     <article
       className={`rounded-2xl p-4 shadow-[var(--shadow-card)] transition ${
-        highlight ? "bg-accent/40 ring-2 ring-primary/50" : "bg-card"
+        highlight || shared ? "bg-accent/40 ring-2 ring-primary/50" : "bg-card"
       }`}
     >
-      {(highlight || fitsGoal) && (
+      {(highlight || fitsGoal || shared) && (
         <div className="mb-2 flex flex-wrap gap-1.5">
+          {shared && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <Share2 className="h-3 w-3" />
+              Shared with you
+            </span>
+          )}
           {highlight && (
             <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
               <Check className="h-3 w-3" />
@@ -294,6 +360,7 @@ function DishCard({
           )}
         </button>
         <CompareToggleButton item={toCompareItem(item, restaurantName)} />
+        <ShareButton input={shareCardInput} restaurantId={restaurantId} dishId={item.id} />
       </div>
     </article>
   );
