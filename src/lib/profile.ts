@@ -1,8 +1,8 @@
-// Lightweight, local-only user profile (daily calorie/protein goal + dietary
-// preference) and a same-day log of dishes eaten. No accounts — everything
-// lives in this device's localStorage, same pattern as SavedProvider's
-// "fuelo:saved". This is v1: a simple running total for today, not a food
-// diary or history.
+// Lightweight, local-only user profile (daily calorie/protein goal +
+// dietary preference). No accounts — everything lives in this device's
+// localStorage, same pattern as SavedProvider's "fuelo:saved". The goal is
+// used purely as a filter (see dishFitsGoal below): there's no logging or
+// running total, so this deliberately isn't a food diary or calorie tracker.
 
 import { midpoint, tagMatchesDietary, type DishNutrition } from "@/lib/filters";
 
@@ -45,36 +45,21 @@ export const DEFAULT_PROFILE: Profile = {
   dietaryPreference: "none",
 };
 
-export type DailyLog = {
-  date: string; // YYYY-MM-DD, device-local
-  loggedCalories: number;
-  loggedProtein: number;
-  loggedDishIds: string[];
-};
+// A single dish is at most this share of the daily calorie target — a rough
+// "largest meal of the day" portion. Keeps the filter meaningful (not every
+// dish under a 2000+ kcal daily target) without turning it into a tracker:
+// this is evaluated fresh per dish, with no memory of what else was picked.
+const MEAL_CALORIE_SHARE = 0.4;
 
-/** Device-local YYYY-MM-DD, used as the daily log's reset key. */
-export function todayKey(): string {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
-export function emptyDailyLog(): DailyLog {
-  return { date: todayKey(), loggedCalories: 0, loggedProtein: 0, loggedDishIds: [] };
-}
-
-/** A dish "fits your goal" if it's within today's remaining calories and,
- *  when a dietary preference is set, matches it. No goal set → nothing fits
- *  (there's no budget to fit into yet). */
-export function dishFitsGoal(
-  item: DishNutrition,
-  profile: Profile,
-  remainingCalories: number,
-): boolean {
+/** A dish "fits your goal" if its calorie midpoint is a reasonable single-meal
+ *  portion of the daily target and, when a dietary preference is set, matches
+ *  it. Purely a filter against the target — no logging, no running total, so
+ *  the same dish always evaluates the same way regardless of what else was
+ *  picked today. No goal set → nothing fits (there's no target to match). */
+export function dishFitsGoal(item: DishNutrition, profile: Profile): boolean {
   if (!profile.goal) return false;
   const cal = midpoint(item.calories_min, item.calories_max);
-  if (cal == null || cal > remainingCalories) return false;
+  if (cal == null || cal > profile.calorieTarget * MEAL_CALORIE_SHARE) return false;
   if (profile.dietaryPreference === "vegan" && !tagMatchesDietary(item.dietary_tags, "Vegan")) {
     return false;
   }

@@ -49,7 +49,7 @@ function ProfilePage() {
       <div className="mt-8 max-w-md">
         <h1 className="text-3xl font-extrabold tracking-tight">Your profile</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Set a daily goal and we'll track what's left on Discover as you log dishes.
+          Set a daily goal and we'll highlight dishes that fit it as you browse.
         </p>
       </div>
 

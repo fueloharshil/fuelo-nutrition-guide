@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2 } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +13,7 @@ import { ConfidenceRing } from "@/components/ConfidenceRing";
 import { useSaved } from "@/components/SavedProvider";
 import { ClaimRestaurantCard } from "@/components/ClaimRestaurantCard";
 import { useFilters } from "@/components/FiltersProvider";
-import { dishMatchesFilters, hasDishLevelFilters, midpoint } from "@/lib/filters";
+import { dishMatchesFilters, hasDishLevelFilters } from "@/lib/filters";
 import { groupByCategory, type SortKey } from "@/lib/menuGrouping";
 import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 import { useProfile } from "@/components/ProfileProvider";
@@ -263,11 +263,8 @@ function DishCard({
   const price =
     item.price_gbp != null ? `£${Number(item.price_gbp).toFixed(2).replace(/\.00$/, "")}` : null;
 
-  const { profile, hasGoal, remainingCalories, isDishLogged, toggleLogDish } = useProfile();
-  const fitsGoal = dishFitsGoal(item, profile, remainingCalories);
-  const logged = isDishLogged(item.id);
-  const cal = midpoint(item.calories_min, item.calories_max);
-  const pro = midpoint(item.protein_min, item.protein_max);
+  const { profile } = useProfile();
+  const fitsGoal = dishFitsGoal(item, profile);
 
   const shareCardInput: ShareCardInput = {
     dishName: item.name,
@@ -339,26 +336,7 @@ function DishCard({
         <StatusBadge verified={verified} />
         <ConfidenceRing confidence={item.confidence} verified={verified} />
       </div>
-      <div className="mt-3 flex items-center gap-2">
-        <button
-          onClick={() => toggleLogDish({ id: item.id, calories: cal ?? 0, protein: pro ?? 0 })}
-          aria-pressed={logged}
-          className={`inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition active:scale-[0.98] ${
-            logged
-              ? "bg-primary/15 text-primary"
-              : "bg-secondary text-secondary-foreground hover:bg-accent"
-          }`}
-        >
-          {logged ? (
-            <>
-              <Check className="h-4 w-4" /> Logged — tap to undo
-            </>
-          ) : (
-            <>
-              <Plus className="h-4 w-4" /> Log this dish
-            </>
-          )}
-        </button>
+      <div className="mt-3 flex items-center justify-end gap-2">
         <CompareToggleButton item={toCompareItem(item, restaurantName)} />
         <ShareButton input={shareCardInput} restaurantId={restaurantId} dishId={item.id} />
       </div>

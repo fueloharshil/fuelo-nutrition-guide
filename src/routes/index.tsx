@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User, SlidersHorizontal } from "lucide-react";
+import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User, SlidersHorizontal, Target, ChevronRight } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
@@ -18,7 +18,8 @@ import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
 import { BottomNav } from "@/components/BottomNav";
-import { DailyBudgetCard } from "@/components/DailyBudgetCard";
+import { useProfile } from "@/components/ProfileProvider";
+import { dishFitsGoal } from "@/lib/profile";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
 import { WaitlistBanner } from "@/components/WaitlistBanner";
@@ -70,6 +71,7 @@ export const Route = createFileRoute("/")({
 function Discover() {
   const { data } = useSuspenseQuery(discoverQuery);
   const { filters, patch } = useFilters();
+  const { profile, hasGoal } = useProfile();
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -131,6 +133,21 @@ function Discover() {
     return ids;
   }, [data.items, filters]);
 
+  // Restaurants with at least one dish fitting the user's goal, for the
+  // "Fits your goal" tag on restaurant cards. A filter against the profile's
+  // target — not a running total — so it's the same every time, independent
+  // of anything logged elsewhere.
+  const goalFitRestaurantIds = useMemo(() => {
+    if (!hasGoal) return null;
+    const ids = new Set<string>();
+    for (const it of data.items) {
+      if (!ids.has(it.restaurant_id) && dishFitsGoal(it, profile)) {
+        ids.add(it.restaurant_id);
+      }
+    }
+    return ids;
+  }, [data.items, hasGoal, profile]);
+
   // Restaurants with at least one restaurant-verified dish, for the "Verified"
   // map-pin badge (distinct from the restaurant-level `verified` flag).
   const verifiedRestaurantIds = useMemo(() => {
@@ -175,7 +192,18 @@ function Discover() {
     <main className="min-h-screen flex flex-col">
       <Header />
       <WaitlistBanner />
-      <DailyBudgetCard />
+      {!hasGoal && (
+        <Link
+          to="/profile"
+          className="mx-4 sm:mx-6 mt-3 flex items-center justify-between gap-3 rounded-2xl bg-card px-4 py-3 shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-float)]"
+        >
+          <span className="inline-flex items-center gap-2 text-sm font-medium">
+            <Target className="h-4 w-4 flex-none text-primary" />
+            Set a goal to see dishes that fit it
+          </span>
+          <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+        </Link>
+      )}
 
       <TrendingRow
         cuisines={trendingCuisines}
@@ -216,7 +244,11 @@ function Discover() {
             <MapSkeleton />
           )}
           {selected && (
-            <RestaurantPreview restaurant={selected} onClose={() => setSelected(null)} />
+            <RestaurantPreview
+              restaurant={selected}
+              onClose={() => setSelected(null)}
+              fitsGoal={goalFitRestaurantIds?.has(selected.id) ?? false}
+            />
           )}
         </div>
       ) : (
@@ -224,7 +256,7 @@ function Discover() {
           <ul className="grid gap-3">
             {filtered.map((r) => (
               <li key={r.id}>
-                <RestaurantCard restaurant={r} />
+                <RestaurantCard restaurant={r} fitsGoal={goalFitRestaurantIds?.has(r.id) ?? false} />
               </li>
             ))}
             {filtered.length === 0 && (
@@ -554,7 +586,7 @@ function MapSkeleton() {
   return <div className="h-full w-full bg-muted animate-pulse" />;
 }
 
-function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
+function RestaurantCard({ restaurant, fitsGoal = false }: { restaurant: Restaurant; fitsGoal?: boolean }) {
   return (
     <Link
       to="/restaurants/$id"
@@ -571,16 +603,30 @@ function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
         </div>
         {restaurant.verified && <StatusBadge verified />}
       </div>
+      {fitsGoal && <GoalFitTag className="mt-2" />}
     </Link>
+  );
+}
+
+function GoalFitTag({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary ${className}`}
+    >
+      <Target className="h-3 w-3" />
+      Fits your goal
+    </span>
   );
 }
 
 function RestaurantPreview({
   restaurant,
   onClose,
+  fitsGoal = false,
 }: {
   restaurant: Restaurant;
   onClose: () => void;
+  fitsGoal?: boolean;
 }) {
   return (
     <div className="absolute inset-x-3 bottom-3 z-[400] rounded-2xl bg-card p-4 shadow-[var(--shadow-float)]">
@@ -596,6 +642,7 @@ function RestaurantPreview({
       <p className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
         <MapPin className="h-3 w-3" /> {restaurant.area}
       </p>
+      {fitsGoal && <GoalFitTag className="mt-2" />}
       <Link
         to="/restaurants/$id"
         params={{ id: restaurant.id }}
