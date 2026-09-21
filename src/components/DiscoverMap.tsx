@@ -12,6 +12,14 @@ type Props = {
   badges?: Record<string, BadgeType | null>;
 };
 
+// mapbox-gl touches `window`/WebGL at import time, so (like the previous
+// Leaflet setup) it's loaded dynamically inside an effect rather than at
+// module scope, keeping this SSR-safe. These are type-only aliases derived
+// from the package's own types — no runtime import here.
+type MapboxGLModule = typeof import("mapbox-gl").default;
+type MapboxMap = InstanceType<MapboxGLModule["Map"]>;
+type MapboxMarker = InstanceType<MapboxGLModule["Marker"]>;
+
 // The Fuelo Ring mark: a small circular pin matching the logo icon and the
 // in-app confidence ring (see ConfidenceRing.tsx / public/fuelo-wordmark.svg)
 // — a solid green circle with a white partial ring (arc, not closed) and a
@@ -38,6 +46,20 @@ const RING_SVG = (active: boolean) => {
 </svg>`;
 };
 
+// Hides every label/icon layer so the basemap reads as clean and
+// decluttered — the Mapbox-style equivalent of CARTO's old "light_nolabels"
+// tiles. `visibility` is a universal layout property, so this is safe to
+// apply to any layer.
+function declutterStyle(map: MapboxMap) {
+  const style = map.getStyle();
+  if (!style?.layers) return;
+  for (const layer of style.layers) {
+    if (layer.type === "symbol") {
+      map.setLayoutProperty(layer.id, "visibility", "none");
+    }
+  }
+}
+
 export default function DiscoverMap({
   restaurants,
   center,
@@ -47,10 +69,10 @@ export default function DiscoverMap({
   badges,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const markersRef = useRef<Record<string, any>>({});
-  const userMarkerRef = useRef<any>(null);
-  const LRef = useRef<any>(null);
+  const mapboxglRef = useRef<MapboxGLModule | null>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const markersRef = useRef<Record<string, MapboxMarker>>({});
+  const userMarkerRef = useRef<MapboxMarker | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
   const fitDoneRef = useRef(false);
   const onSelectRef = useRef(onSelect);
@@ -60,62 +82,78 @@ export default function DiscoverMap({
   const badgesRef = useRef(badges);
   badgesRef.current = badges;
 
-  const makeIcon = (L: any, active: boolean, badge: BadgeType | null | undefined) => {
+  const makeEl = (active: boolean, badge: BadgeType | null | undefined) => {
     const size = active ? 44 : 30;
     const badgeHtml = badge
       ? `<span class="fuelo-ring-badge">${BADGE_LABEL[badge]}</span>`
       : "";
-    return L.divIcon({
-      className: "fuelo-ring-wrap",
-      html: `<div class="fuelo-ring-pin${active ? " fuelo-ring-pin-active" : ""}">${RING_SVG(active)}${badgeHtml}</div>`,
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2],
+    const wrap = document.createElement("div");
+    wrap.className = "fuelo-ring-wrap";
+    wrap.style.width = `${size}px`;
+    wrap.style.height = `${size}px`;
+    wrap.innerHTML = `<div class="fuelo-ring-pin${active ? " fuelo-ring-pin-active" : ""}">${RING_SVG(active)}${badgeHtml}</div>`;
+    return wrap;
+  };
+
+  const renderMarkers = () => {
+    const map = mapRef.current;
+    const mapboxgl = mapboxglRef.current;
+    if (!map || !mapboxgl) return;
+    Object.values(markersRef.current).forEach((m) => m.remove());
+    markersRef.current = {};
+    restaurants.forEach((r) => {
+      if (r.latitude == null || r.longitude == null) return;
+      const isActive = r.id === activeIdRef.current;
+      const el = makeEl(isActive, badgesRef.current?.[r.id]);
+      el.addEventListener("click", () => onSelectRef.current(r));
+      const marker = new mapboxgl.Marker({ element: el, anchor: "center" })
+        .setLngLat([r.longitude, r.latitude])
+        .addTo(map);
+      markersRef.current[r.id] = marker;
     });
   };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const L = (await import("leaflet")).default;
+      const mapboxgl = (await import("mapbox-gl")).default;
       if (cancelled || !containerRef.current || mapRef.current) return;
-      LRef.current = L;
+      mapboxglRef.current = mapboxgl;
 
-      const map = L.map(containerRef.current, {
-        center,
+      mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
+
+      const map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/light-v11",
+        center: [center[1], center[0]],
         zoom: 14,
-        zoomControl: false,
         attributionControl: true,
       });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-        attribution: "© OpenStreetMap contributors © CARTO",
-        subdomains: "abcd",
-        maxZoom: 20,
-      }).addTo(map);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+      map.on("style.load", () => declutterStyle(map));
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
       mapRef.current = map;
 
-      renderMarkers();
+      map.on("load", () => {
+        renderMarkers();
+        map.resize();
+      });
 
-      requestAnimationFrame(() => map.invalidateSize());
-      setTimeout(() => map.invalidateSize(), 250);
-
-      // Redraw whenever the container's box actually changes size. This is the
-      // reliable fix for the map rendering blank until a manual resize: it
-      // covers the container settling to its real height after the desktop
-      // layout mounts, remounting when switching back to Map view, and any
-      // size change that isn't a window-level "resize" event.
+      // Redraw whenever the container's box actually changes size — covers
+      // the container settling to its real height after the desktop layout
+      // mounts, remounting when switching back to Map view, and any size
+      // change that isn't a window-level "resize" event.
       if (typeof ResizeObserver !== "undefined" && containerRef.current) {
         let roRaf = 0;
         const ro = new ResizeObserver(() => {
           cancelAnimationFrame(roRaf);
-          roRaf = requestAnimationFrame(() => mapRef.current?.invalidateSize());
+          roRaf = requestAnimationFrame(() => mapRef.current?.resize());
         });
         ro.observe(containerRef.current);
         roRef.current = ro;
       }
     })();
 
-    const onResize = () => mapRef.current?.invalidateSize();
+    const onResize = () => mapRef.current?.resize();
     window.addEventListener("resize", onResize);
 
     return () => {
@@ -133,102 +171,86 @@ export default function DiscoverMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const renderMarkers = () => {
-    const map = mapRef.current;
-    const L = LRef.current;
-    if (!map || !L) return;
-    Object.values(markersRef.current).forEach((m: any) => m.remove());
-    markersRef.current = {};
-    restaurants.forEach((r) => {
-      if (r.latitude == null || r.longitude == null) return;
-      const isActive = r.id === activeIdRef.current;
-      const marker = L.marker([r.latitude, r.longitude], {
-        icon: makeIcon(L, isActive, badgesRef.current?.[r.id]),
-      }).addTo(map);
-      marker.on("click", () => onSelectRef.current(r));
-      markersRef.current[r.id] = marker;
-    });
-  };
-
   // Sync restaurant markers when the list or their badges change.
   useEffect(() => {
-    renderMarkers();
+    if (mapRef.current?.loaded()) renderMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurants, badges]);
 
   // Update view when center changes.
   useEffect(() => {
-    if (mapRef.current) {
-      mapRef.current.setView(center, mapRef.current.getZoom());
-    }
+    mapRef.current?.setCenter([center[1], center[0]]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center[0], center[1]]);
 
   // Auto-fit bounds once user location + restaurants are known.
   useEffect(() => {
     const map = mapRef.current;
-    const L = LRef.current;
-    if (!map || !L || fitDoneRef.current) return;
+    const mapboxgl = mapboxglRef.current;
+    if (!map || !mapboxgl || fitDoneRef.current) return;
     const pts: [number, number][] = restaurants
       .filter((r) => r.latitude != null && r.longitude != null)
-      .map((r) => [r.latitude as number, r.longitude as number]);
-    if (userLocation) pts.push(userLocation);
+      .map((r) => [r.longitude as number, r.latitude as number]);
+    if (userLocation) pts.push([userLocation[1], userLocation[0]]);
     if (pts.length < 2) return;
-    map.fitBounds(pts, { padding: [48, 48], maxZoom: 15 });
+    const bounds = pts.reduce(
+      (b, p) => b.extend(p),
+      new mapboxgl.LngLatBounds(pts[0], pts[0]),
+    );
+    map.fitBounds(bounds, { padding: 48, maxZoom: 15 });
     fitDoneRef.current = true;
   }, [restaurants, userLocation]);
 
   // User location marker — a distinct blue dot, never styled like a restaurant pin.
   useEffect(() => {
     const map = mapRef.current;
-    const L = LRef.current;
-    if (!map || !L) return;
+    const mapboxgl = mapboxglRef.current;
+    if (!map || !mapboxgl) return;
     if (!userLocation) {
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-        userMarkerRef.current = null;
-      }
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
       return;
     }
-    const icon = L.divIcon({
-      className: "fuelo-user-dot-wrap",
-      html: `<span class="fuelo-user-dot"></span>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-    });
     if (!userMarkerRef.current) {
-      userMarkerRef.current = L.marker(userLocation, {
-        icon,
-        interactive: false,
-        keyboard: false,
-        zIndexOffset: 1000,
-      }).addTo(map);
+      const el = document.createElement("div");
+      el.className = "fuelo-user-dot-wrap";
+      el.innerHTML = `<span class="fuelo-user-dot"></span>`;
+      userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "center" })
+        .setLngLat([userLocation[1], userLocation[0]])
+        .addTo(map);
     } else {
-      userMarkerRef.current.setLatLng(userLocation);
+      userMarkerRef.current.setLngLat([userLocation[1], userLocation[0]]);
     }
   }, [userLocation?.[0], userLocation?.[1]]);
 
   // Focus / restyle active marker.
   useEffect(() => {
-    const L = LRef.current;
-    if (!L) return;
-    Object.entries(markersRef.current).forEach(([id, m]: [string, any]) => {
-      m.setIcon(makeIcon(L, id === activeId, badgesRef.current?.[id]));
+    const map = mapRef.current;
+    const mapboxgl = mapboxglRef.current;
+    if (!map || !mapboxgl) return;
+    Object.entries(markersRef.current).forEach(([id, marker]) => {
+      const isActive = id === activeId;
+      const lngLat = marker.getLngLat();
+      marker.remove();
+      const el = makeEl(isActive, badgesRef.current?.[id]);
+      const r = restaurants.find((x) => x.id === id);
+      if (r) el.addEventListener("click", () => onSelectRef.current(r));
+      markersRef.current[id] = new mapboxgl.Marker({ element: el, anchor: "center" })
+        .setLngLat(lngLat)
+        .addTo(map);
     });
-    if (!mapRef.current || !activeId) return;
+    if (!activeId) return;
     const m = markersRef.current[activeId];
     if (m) {
-      const ll = m.getLatLng();
-      mapRef.current.setView([ll.lat, ll.lng], Math.max(mapRef.current.getZoom(), 15), {
-        animate: true,
-      });
+      map.easeTo({ center: m.getLngLat(), zoom: Math.max(map.getZoom(), 15) });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
   const recenter = () => {
-    if (!mapRef.current || !userLocation) return;
-    mapRef.current.setView(userLocation, Math.max(mapRef.current.getZoom(), 15), {
-      animate: true,
-    });
+    const map = mapRef.current;
+    if (!map || !userLocation) return;
+    map.easeTo({ center: [userLocation[1], userLocation[0]], zoom: Math.max(map.getZoom(), 15) });
   };
 
   return (

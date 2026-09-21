@@ -38,7 +38,7 @@ GitHub.
 | Icons | **lucide-react** |
 | Data fetching | **TanStack Query** (`@tanstack/react-query`) — queries hydrated via route loaders |
 | Backend | **Supabase** (`@supabase/supabase-js`), project `cpuhhgfsshpywjyxttzi` |
-| Map | **Leaflet** + **react-leaflet** (deps), rendered imperatively; CARTO light tiles |
+| Map | **Mapbox GL JS** (`mapbox-gl`), rendered imperatively; `mapbox/light-v11` style with all symbol/label layers hidden |
 | Forms / validation | react-hook-form + zod (deps; email capture uses plain state) |
 | Toasts | sonner |
 | Package manager | **Bun** (`bun.lock`, `bunfig.toml`) |
@@ -70,16 +70,15 @@ GitHub.
 │   │   ├── feed.tsx               # "/feed" — Trending / Newly verified / High protein picks, bottom nav
 │   │   ├── restaurants.$id.tsx    # "/restaurants/:id" — restaurant page + menu + claim card (no bottom nav)
 │   │   ├── saved.tsx              # "/saved" — saved restaurants (from localStorage), bottom nav
-│   │   ├── profile.tsx            # "/profile" — placeholder ("coming soon"), bottom nav
+│   │   ├── profile.tsx            # "/profile" — daily goal + dietary preference (local-only), bottom nav
 │   │   └── README.md              # Routing conventions (do NOT create src/pages/ etc.)
 │   ├── components/
-│   │   ├── DiscoverMap.tsx        # Leaflet map, Fuelo Ring pins + badges, user-location dot, recenter
+│   │   ├── DiscoverMap.tsx        # Mapbox GL map, Fuelo Ring pins + badges, user-location dot, recenter
 │   │   ├── BottomNav.tsx          # Persistent 4-tab bottom nav (Discover/Feed/Saved/Profile)
 │   │   ├── SavedProvider.tsx      # Context + localStorage ("fuelo:saved") for saved restaurant ids
 │   │   ├── FiltersProvider.tsx    # Context for Discover filters (calories/protein/dietary/cuisine)
 │   │   ├── FilterSheet.tsx        # Discover filter bottom-sheet UI, grouped cuisine taxonomy
-│   │   ├── ProfileProvider.tsx    # Context + localStorage for daily goal/dietary pref + today's log
-│   │   ├── DailyBudgetCard.tsx    # "Today's budget" card on Discover (calories/protein remaining)
+│   │   ├── ProfileProvider.tsx    # Context + localStorage for daily goal/dietary preference
 │   │   ├── CompareProvider.tsx    # Context (session-only) for the 2-3 dish "Compare" selection
 │   │   ├── CompareToggleButton.tsx# Small "+ Compare" pill on a dish card, used on 2 different pages
 │   │   ├── CompareLauncher.tsx    # Floating "Compare (N)" button, mounted once in __root.tsx
@@ -127,7 +126,7 @@ GitHub.
 ├── vite.config.ts                 # thin wrapper over @lovable.dev/vite-tanstack-config
 ├── components.json                # shadcn config (new-york, baseColor slate, css vars)
 ├── package.json / bun.lock / bunfig.toml
-├── .env                           # VITE_SUPABASE_* + SUPABASE_* (committed; publishable key only)
+├── .env                           # VITE_SUPABASE_* + SUPABASE_* + VITE_MAPBOX_TOKEN (committed; publishable/public keys only)
 └── AGENTS.md                      # Lovable sync warning
 ```
 
@@ -290,18 +289,22 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 > **"Saved" is not a table.** Saved restaurants live only in browser
 > `localStorage` under the key `fuelo:saved` (see `SavedProvider.tsx`).
 
-> **User profile is local-only, not a table.** No accounts yet. `ProfileProvider.tsx`
-> persists `{ goal, calorieTarget, proteinTarget, dietaryPreference }` under
-> `localStorage["fuelo:profile"]` and today's running total under
-> `["fuelo:daily-log"]` (resets when the stored date ≠ today, checked on load
-> and every 60s while the app is open). Goal → target defaults live in
+> **User profile is local-only, not a table, and is a filter — not a tracker.**
+> No accounts yet. `ProfileProvider.tsx` persists
+> `{ goal, calorieTarget, proteinTarget, dietaryPreference }` under
+> `localStorage["fuelo:profile"]`. Goal → target defaults live in
 > `GOAL_DEFAULTS` (`src/lib/profile.ts`) — generic adult starting points, not
-> personalized/medical, always shown as user-adjustable. "Log this dish" (on
-> each restaurant page's dish card) adds/removes that dish's calorie/protein
-> midpoint from today's log and is idempotent per dish per day. A dish shows
-> a "Fits your goal" tag when its calorie midpoint is within what's left
-> today and (if a dietary preference is set) its tags match — see
-> `dishFitsGoal()`.
+> personalized/medical, always shown as user-adjustable. There's deliberately
+> no logging of what's been eaten and no running/remaining total: the goal is
+> only ever evaluated statelessly against the target via `dishFitsGoal()`
+> (a dish's calorie midpoint must be ≤ `MEAL_CALORIE_SHARE` (40%) of the daily
+> calorie target — a rough single-meal portion — and its dietary tags must
+> match, if a preference is set). It surfaces as a small green "Fits your
+> goal" tag: per-dish on the restaurant page, and per-restaurant (via
+> `GoalFitTag`, if any dish qualifies) on Discover's list cards and map-pin
+> preview. On Discover, if no goal is set yet, a single-line prompt links to
+> `/profile` instead; once a goal exists, that prompt disappears and the tags
+> are the only surfacing.
 
 > **Compare is session-only, not persisted.** Up to `MAX_COMPARE` (3) dishes,
 > selectable via `CompareToggleButton` on any dish card (restaurant page +
@@ -344,11 +347,11 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 
 | Route | File | What it is |
 | --- | --- | --- |
-| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, **"Today's budget" card** (`DailyBudgetCard`, calories/protein remaining today, or a "set your daily goal" CTA if none set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`). Map = Leaflet with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu". List = restaurant cards. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
+| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with a "Fits your goal" tag if applicable. List = restaurant cards, same "Fits your goal" tag when a goal is set and the restaurant has a qualifying dish. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
 | `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Each dish card has a **"+ Compare"** toggle. Bottom nav present. |
-| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, "Fits your goal" tag, a **"Log this dish" / "Logged — tap to undo"** button that adds/removes the dish from today's budget, a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
+| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
-| `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below). Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
+| `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
 | `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) lists the restaurant's dishes grouped like the public page with a "X of Y verified" bar and three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
 | `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. No bottom nav. |
 
@@ -398,17 +401,38 @@ CSS variables and Tailwind semantic classes (`bg-background`, `text-primary`,
   (`-0.02em`). Small uppercase labels use `text-[11px] uppercase tracking-widest
   text-muted-foreground`.
 
-**Map styling (Leaflet, in `styles.css`):**
+**Map styling (Mapbox GL, in `styles.css`):**
 
-- CARTO **light** basemap, tiles nudged warm via
-  `filter: sepia(0.10) saturate(1.05) brightness(1.02)` to match the cream theme.
+- `mapbox://styles/mapbox/light-v11` basemap. On `style.load`, `DiscoverMap.tsx`
+  hides every `symbol`-type layer (`map.setLayoutProperty(id, "visibility",
+  "none")`) — the Mapbox equivalent of CARTO's old "light_nolabels" tiles, so
+  there's no road/POI/transit/place-name clutter. The rendered `.mapboxgl-canvas`
+  is nudged warm via `filter: sepia(0.10) saturate(1.05) brightness(1.02)` to
+  match the cream theme (same treatment as the old CARTO tiles).
+- Requires a Mapbox access token in `VITE_MAPBOX_TOKEN` (`.env`) — see
+  "Mapbox setup" below.
 - Restaurant pins use the **Fuelo Ring mark** (`.fuelo-ring-pin`) — a small
   circular pin (white disc, thick green ring border, green center dot; no
   teardrop), echoing `ConfidenceRing`. Active pin is larger with a white outer
   halo ring. Optional corner badge (`.fuelo-ring-badge`, dark pill/white text)
   shows "Verified" / "New" / "Top Rated" (priority in that order, one max).
   User location is a **blue dot** (`.fuelo-user-dot`, `#2563eb`), always
-  visually distinct from restaurant pins.
+  visually distinct from restaurant pins. Both are rendered as `mapboxgl.Marker`
+  instances with a custom DOM `element` (not Mapbox's default teardrop pin),
+  same approach as the old Leaflet `divIcon`s.
+
+> **Mapbox setup.** Get a free account at
+> [mapbox.com](https://www.mapbox.com/), then in the Mapbox dashboard under
+> **Tokens** either copy the default public token or create a new one (no
+> special scopes needed — the default public scopes are enough for rendering
+> a map). Add it to `.env` (project root) as `VITE_MAPBOX_TOKEN="pk.…"` — it's
+> read client-side via `import.meta.env.VITE_MAPBOX_TOKEN` in
+> `DiscoverMap.tsx`. Like the Supabase publishable key already in this file,
+> a Mapbox public token is meant to be used client-side (restrict it to your
+> domain(s) in the Mapbox dashboard for production, not required for local
+> dev). Without a token the map container still renders but the basemap/pins
+> never load (Mapbox's style request fails silently rather than crashing the
+> page).
 
 **Verification / confidence language (consistent across the app):**
 
