@@ -1,7 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Mail, Check, CheckCircle2, SlidersHorizontal, EyeOff, LogOut, Loader2 } from "lucide-react";
+import {
+  Mail,
+  Check,
+  CheckCircle2,
+  SlidersHorizontal,
+  EyeOff,
+  LogOut,
+  Loader2,
+  Eye,
+  Search,
+  TrendingUp,
+  TrendingDown,
+} from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { dbPending } from "@/lib/supabasePending";
@@ -10,6 +22,7 @@ import { formatRange } from "@/lib/fuelo-types";
 import { groupByCategory, type CategoryTypeMap } from "@/lib/menuGrouping";
 import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 import { useOwnerAuth } from "@/hooks/useOwnerAuth";
+import { fetchRestaurantAnalytics, computeTrend, type RestaurantAnalytics, type Trend } from "@/lib/analytics";
 
 export const Route = createFileRoute("/verify")({
   component: VerifyPage,
@@ -218,10 +231,15 @@ function OwnerDashboard({ email }: { email: string }) {
   return (
     <div className="mt-6">
       <div className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
-        <h2 className="text-lg font-extrabold tracking-tight">{data.restaurant.name}</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {verifiedCount} of {total} {total === 1 ? "dish" : "dishes"} verified
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-extrabold tracking-tight truncate">{data.restaurant.name}</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {verifiedCount} of {total} {total === 1 ? "dish" : "dishes"} verified
+            </p>
+          </div>
+          <span className="flex-none text-3xl font-extrabold tabular-nums text-primary">{pct}%</span>
+        </div>
         <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-secondary">
           <div
             className="h-full rounded-full bg-primary transition-all"
@@ -234,6 +252,8 @@ function OwnerDashboard({ email }: { email: string }) {
           </p>
         )}
       </div>
+
+      <AnalyticsSection restaurantId={data.restaurant.id} items={data.items} />
 
       <div className="mt-6 space-y-8">
         {grouped.map(([category, items]) => (
@@ -252,6 +272,144 @@ function OwnerDashboard({ email }: { email: string }) {
         ))}
       </div>
     </div>
+  );
+}
+
+// Owner-facing analytics — profile views, most-viewed dishes, and search
+// visibility. Fetches its own data (rather than being passed it from
+// OwnerDashboard's query) so a failure here — most likely the
+// restaurant_events migration not being live yet — degrades to a quiet
+// message instead of breaking the verify list above it.
+function AnalyticsSection({ restaurantId, items }: { restaurantId: string; items: MenuItem[] }) {
+  const { data: analytics, isLoading } = useQuery<RestaurantAnalytics | null>({
+    queryKey: ["owner-analytics", restaurantId],
+    queryFn: () => fetchRestaurantAnalytics(restaurantId),
+  });
+
+  if (isLoading) {
+    return <div className="mt-4 h-28 animate-pulse rounded-2xl bg-card" />;
+  }
+  if (!analytics) {
+    return (
+      <p className="mt-4 text-xs text-muted-foreground">
+        Analytics will show up here once this update is fully live — check back soon.
+      </p>
+    );
+  }
+
+  const monthTrend = computeTrend(analytics.profileViews.thisMonth, analytics.profileViews.lastMonth);
+  const dishName = (id: string) => items.find((it) => it.id === id)?.name ?? "Deleted dish";
+
+  return (
+    <div className="mt-4 grid gap-3">
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard
+          icon={<Eye className="h-3.5 w-3.5" />}
+          label="Profile views"
+          value={analytics.profileViews.thisWeek}
+          sub="this week"
+          trend={computeTrend(analytics.profileViews.thisWeek, analytics.profileViews.lastWeek)}
+          footnote={`${analytics.profileViews.thisMonth} this month${
+            monthTrend ? ` (${trendText(monthTrend)})` : ""
+          }`}
+        />
+        <StatCard
+          icon={<Search className="h-3.5 w-3.5" />}
+          label="Search visibility"
+          value={analytics.searchesThisWeek}
+          sub={analytics.searchesThisWeek === 1 ? "search this week" : "searches this week"}
+          trend={null}
+          footnote={
+            analytics.filterBreakdown.length > 0 ? (
+              <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                {analytics.filterBreakdown.slice(0, 3).map((f) => (
+                  <span key={f.label} className="whitespace-nowrap">
+                    {f.label} · {f.count}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              "No filtered searches yet"
+            )
+          }
+        />
+      </div>
+
+      {analytics.topDishes.length > 0 && (
+        <div className="rounded-2xl bg-card p-4 shadow-[var(--shadow-card)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Most viewed dishes
+          </h3>
+          <ol className="mt-2 grid gap-1.5">
+            {analytics.topDishes.map((d, i) => (
+              <li key={d.menuItemId} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">
+                  <span className="text-muted-foreground tabular-nums">{i + 1}.</span>{" "}
+                  {dishName(d.menuItemId)}
+                </span>
+                <span className="flex-none font-semibold tabular-nums text-primary">
+                  {d.views} {d.views === 1 ? "view" : "views"}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function trendText(t: Trend): string {
+  if (t.direction === "new") return "new";
+  if (t.direction === "flat") return "no change";
+  return `${t.pct! > 0 ? "+" : ""}${t.pct}%`;
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  trend,
+  footnote,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  sub: string;
+  trend: Trend | null;
+  footnote?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl bg-card p-4 shadow-[var(--shadow-card)]">
+      <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+        {icon} {label}
+      </p>
+      <p className="mt-1.5 text-2xl font-extrabold tabular-nums tracking-tight">{value}</p>
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <span>{sub}</span>
+        {trend && <TrendBadge trend={trend} />}
+      </div>
+      {footnote && <div className="mt-2 text-[11px] text-muted-foreground">{footnote}</div>}
+    </div>
+  );
+}
+
+function TrendBadge({ trend }: { trend: Trend }) {
+  if (trend.direction === "new") {
+    return <span className="font-semibold text-primary">New</span>;
+  }
+  if (trend.direction === "flat") {
+    return <span>No change</span>;
+  }
+  const up = trend.direction === "up";
+  const Icon = up ? TrendingUp : TrendingDown;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 font-semibold ${up ? "text-primary" : "text-destructive"}`}
+    >
+      <Icon className="h-3 w-3" /> {Math.abs(trend.pct ?? 0)}%
+    </span>
   );
 }
 

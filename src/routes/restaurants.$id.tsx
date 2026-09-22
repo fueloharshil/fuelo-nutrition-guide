@@ -22,6 +22,7 @@ import { CompareToggleButton } from "@/components/CompareToggleButton";
 import { toCompareItem } from "@/lib/compare";
 import { ShareButton } from "@/components/ShareButton";
 import type { ShareCardInput } from "@/lib/shareCard";
+import { logProfileView, logMenuItemView } from "@/lib/analytics";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -95,6 +96,12 @@ function RestaurantPage() {
   const [sort, setSort] = useState<SortKey>("none");
   const grouped = groupByCategory(activeItems, sort, data.categoryTypeMap);
 
+  // Owner-facing analytics: one profile_view per restaurant page visit. Fire
+  // and forget — see src/lib/analytics.ts.
+  useEffect(() => {
+    logProfileView(r.id);
+  }, [r.id]);
+
   // Arrived via a shared dish link (?dish=<id>) — scroll to it and briefly
   // highlight it so the recipient can immediately see what was shared.
   // Deliberately NOT tracked as separate component state: the restaurant
@@ -106,6 +113,7 @@ function RestaurantPage() {
   // itself after a delay, rather than clearing local state.
   useEffect(() => {
     if (!sharedDishId) return;
+    logMenuItemView(r.id, sharedDishId);
     const scrollTimer = setTimeout(() => {
       document
         .getElementById(`dish-${sharedDishId}`)
@@ -118,7 +126,7 @@ function RestaurantPage() {
       clearTimeout(scrollTimer);
       clearTimeout(clearTimer);
     };
-  }, [sharedDishId, navigate]);
+  }, [sharedDishId, navigate, r.id]);
 
 
 

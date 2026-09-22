@@ -44,6 +44,18 @@ export type RestaurantOwner = {
   created_at?: string;
 };
 
+export type RestaurantEventType = "profile_view" | "menu_item_view" | "search_match";
+
+export type RestaurantEvent = {
+  id: string;
+  restaurant_id: string;
+  event_type: RestaurantEventType;
+  menu_item_id: string | null;
+  filter_type: string | null;
+  search_id: string | null;
+  created_at: string;
+};
+
 export function formatRange(
   min: number | null | undefined,
   max: number | null | undefined,

@@ -93,6 +93,40 @@ export function anyFilterActive(f: DiscoverFilters): boolean {
   return hasDishLevelFilters(f) || f.cuisine != null;
 }
 
+// Display labels for each dish-level filter criterion, used by search-match
+// analytics (see src/lib/analytics.ts). Distinct from dishMatchesFilters:
+// that requires ALL active filters to match on the SAME dish (an AND), while
+// this checks each criterion independently against ANY of the restaurant's
+// dishes — so a "High protein + Vegan" search can attribute the match to
+// each filter separately, even if no single dish satisfies both.
+export function matchingFilterLabels(items: DishNutrition[], f: DiscoverFilters): string[] {
+  const labels: string[] = [];
+  if (
+    f.maxCalories != null &&
+    items.some((it) => {
+      const c = midpoint(it.calories_min, it.calories_max);
+      return c != null && c <= f.maxCalories!;
+    })
+  ) {
+    labels.push("Max calories");
+  }
+  if (
+    f.minProtein != null &&
+    items.some((it) => {
+      const p = midpoint(it.protein_min, it.protein_max);
+      return p != null && p >= f.minProtein!;
+    })
+  ) {
+    labels.push("Min protein");
+  }
+  for (const key of f.dietary) {
+    if (items.some((it) => tagMatchesDietary(it.dietary_tags, key))) {
+      labels.push(key);
+    }
+  }
+  return labels;
+}
+
 /** Number of active filters, for the badge count. */
 export function activeFilterCount(f: DiscoverFilters): number {
   let n = 0;

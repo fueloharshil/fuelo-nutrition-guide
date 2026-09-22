@@ -13,7 +13,9 @@ import {
   anyFilterActive,
   dishMatchesFilters,
   hasDishLevelFilters,
+  matchingFilterLabels,
 } from "@/lib/filters";
+import { logSearchMatches } from "@/lib/analytics";
 import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
@@ -188,6 +190,26 @@ function Discover() {
     });
   }, [query, filters, data, matchingRestaurantIds]);
 
+  // Owner-facing analytics: when the filter sheet closes with active
+  // dish-level filters, log a search-visibility event for every restaurant
+  // that currently matches, tagged with which specific criteria matched
+  // (see matchingFilterLabels — independent per-criterion, not the AND used
+  // to decide who's shown). Closing without any dish-level filter active
+  // (or with none matching) logs nothing.
+  const closeFilters = () => {
+    setFiltersOpen(false);
+    if (!matchingRestaurantIds || matchingRestaurantIds.size === 0) return;
+    logSearchMatches(
+      [...matchingRestaurantIds].map((restaurantId) => ({
+        restaurantId,
+        filterLabels: matchingFilterLabels(
+          data.items.filter((it) => it.restaurant_id === restaurantId),
+          filters,
+        ),
+      })),
+    );
+  };
+
   return (
     <main className="min-h-screen flex flex-col">
       <Header />
@@ -270,11 +292,7 @@ function Discover() {
 
       <Disclaimer />
 
-      <FilterSheet
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        resultCount={filtered.length}
-      />
+      <FilterSheet open={filtersOpen} onClose={closeFilters} resultCount={filtered.length} />
 
       <BottomNav active="discover" />
     </main>

@@ -3,6 +3,7 @@ import { Share2, Loader2 } from "lucide-react";
 import { renderShareCard, type ShareCardInput } from "@/lib/shareCard";
 import { buildDishShareUrl } from "@/lib/share";
 import { ShareSheet } from "@/components/ShareSheet";
+import { logMenuItemView } from "@/lib/analytics";
 
 export function ShareButton({
   input,
@@ -26,6 +27,7 @@ export function ShareButton({
 
   async function handleClick() {
     setOpen(true);
+    logMenuItemView(restaurantId, dishId);
     if (blob) return; // already generated for this dish
     setLoading(true);
     try {

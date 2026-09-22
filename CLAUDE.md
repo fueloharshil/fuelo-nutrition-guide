@@ -110,6 +110,7 @@ GitHub.
 │   │   ├── compare.ts             # CompareItem type + toCompareItem() snapshot helper
 │   │   ├── shareCard.ts           # Canvas 2D renderer for the shareable dish image (1080×1350 PNG)
 │   │   ├── share.ts               # buildDishShareUrl(), Web Share/Clipboard feature detection
+│   │   ├── analytics.ts           # Fire-and-forget event loggers + fetchRestaurantAnalytics() for /verify
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
 │   ├── hooks/use-mobile.tsx
@@ -286,6 +287,43 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 > Without this the `/verify` and `/admin` login links render but don't
 > complete sign-in.
 
+### `restaurant_events`  — owner-facing analytics (profile/dish views, search visibility)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | |
+| `restaurant_id` | uuid FK → restaurants(id) | NOT NULL, ON DELETE CASCADE |
+| `event_type` | text | CHECK in (`profile_view`, `menu_item_view`, `search_match`) |
+| `menu_item_id` | uuid FK → menu_items(id) | nullable, ON DELETE SET NULL — set only for `menu_item_view` |
+| `filter_type` | text | nullable — set only for `search_match`; a display label like "Max calories" / "Min protein" / "Vegan" |
+| `search_id` | uuid | nullable — set only for `search_match`; shared by every row logged from the same filter-apply action |
+| `created_at` | timestamptz | default `now()` |
+
+RLS: **public INSERT** (any visitor's browsing logs an anonymous event — same
+trust model as `user_waitlist`/`restaurant_leads`); **SELECT** restricted to
+the restaurant's own linked owner (via `restaurant_owners`) or the admin.
+Added in migration `20260716090000_restaurant_events`.
+
+> **Analytics is derived, not tracked live.** `src/lib/analytics.ts` has three
+> fire-and-forget loggers — `logProfileView()` (restaurant page mount, in
+> `restaurants.$id.tsx`), `logMenuItemView()` (a shared-dish deep link
+> landing, or a Share tap), and `logSearchMatches()` (Discover's filter sheet
+> closing with an active dish-level filter — one call batches a row per
+> matching restaurant **per matched criterion**, via `matchingFilterLabels()`
+> in `src/lib/filters.ts`, all sharing one `search_id`). Every logger swallows
+> its own errors (console.warn only) so a failed analytics ping never breaks
+> the page a visitor is actually using. The `/verify` dashboard's
+> `AnalyticsSection` calls `fetchRestaurantAnalytics()`, which pulls the last
+> 60 days of a restaurant's events in one query and reduces them client-side
+> into this-week/last-week/this-month/last-month profile-view counts (see
+> `computeTrend()` for the up/down/new/flat badge), a top-5 "Most viewed
+> dishes" list, and this week's search-appearance count + filter breakdown.
+> Like `restaurant_owners`/`menu_categories`, this table isn't in the
+> generated types yet, so all access goes through `dbPending`
+> (`src/lib/supabasePending.ts`); `fetchRestaurantAnalytics()` degrades to
+> `null` (not a throw) if the table isn't reachable, so the dashboard shows a
+> quiet "check back soon" note instead of breaking.
+
 > **"Saved" is not a table.** Saved restaurants live only in browser
 > `localStorage` under the key `fuelo:saved` (see `SavedProvider.tsx`).
 
@@ -352,7 +390,7 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 | `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
-| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) lists the restaurant's dishes grouped like the public page with a "X of Y verified" bar and three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
+| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
 | `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. No bottom nav. |
 
 **Bottom navigation** (`BottomNav.tsx`) — persistent 4-tab bar (Discover / Feed / Saved / Profile) rendered by each of those 4 route files (not by `__root.tsx`, so the restaurant detail page can opt out). Active tab is green with a small dot indicator + bold label.
