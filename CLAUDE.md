@@ -324,6 +324,15 @@ Added in migration `20260716090000_restaurant_events`.
 > `null` (not a throw) if the table isn't reachable, so the dashboard shows a
 > quiet "check back soon" note instead of breaking.
 
+> **The "get verified" banner dismisses per browser tab, not forever.**
+> `VerifyProgressBanner` (in `verify.tsx`) shows while `verifiedCount < total`
+> and writes its dismiss flag to `sessionStorage` (key
+> `fuelo:verify-banner-dismissed:<restaurantId>`), not `localStorage` like
+> `WaitlistBanner`'s — closing the tab clears it, so an owner who dismisses it
+> still sees it again next time they open the dashboard, for as long as
+> verification is incomplete. It disappears on its own (independent of the
+> dismiss flag) the moment every active dish is verified.
+
 > **"Saved" is not a table.** Saved restaurants live only in browser
 > `localStorage` under the key `fuelo:saved` (see `SavedProvider.tsx`).
 
@@ -390,7 +399,7 @@ Added in migration `20260716090000_restaurant_events`.
 | `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
-| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
+| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
 | `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. No bottom nav. |
 
 **Bottom navigation** (`BottomNav.tsx`) — persistent 4-tab bar (Discover / Feed / Saved / Profile) rendered by each of those 4 route files (not by `__root.tsx`, so the restaurant detail page can opt out). Active tab is green with a small dot indicator + bold label.

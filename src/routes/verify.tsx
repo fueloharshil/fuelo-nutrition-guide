@@ -13,6 +13,7 @@ import {
   Search,
   TrendingUp,
   TrendingDown,
+  X,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -230,6 +231,10 @@ function OwnerDashboard({ email }: { email: string }) {
 
   return (
     <div className="mt-6">
+      {verifiedCount < total && (
+        <VerifyProgressBanner restaurantId={data.restaurant.id} remaining={total - verifiedCount} />
+      )}
+
       <div className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -271,6 +276,56 @@ function OwnerDashboard({ email }: { email: string }) {
           </section>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Nudges an owner with unverified dishes toward finishing their menu.
+// Dismissing it only hides it for this browser tab (sessionStorage, not
+// localStorage) — it comes back on the next visit for as long as
+// verification is still incomplete, so it isn't permanently silence-able.
+const VERIFY_BANNER_DISMISS_PREFIX = "fuelo:verify-banner-dismissed:";
+
+function VerifyProgressBanner({
+  restaurantId,
+  remaining,
+}: {
+  restaurantId: string;
+  remaining: number;
+}) {
+  const dismissKey = `${VERIFY_BANNER_DISMISS_PREFIX}${restaurantId}`;
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return sessionStorage.getItem(dismissKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  if (dismissed) return null;
+
+  function dismiss() {
+    try {
+      sessionStorage.setItem(dismissKey, "1");
+    } catch {}
+    setDismissed(true);
+  }
+
+  return (
+    <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 shadow-[var(--shadow-card)]">
+      <p className="text-sm text-foreground">
+        <span className="font-semibold">Verified restaurants get more visibility in search</span> —
+        verify your remaining {remaining} {remaining === 1 ? "dish" : "dishes"} to complete your
+        profile.
+      </p>
+      <button
+        onClick={dismiss}
+        aria-label="Dismiss"
+        className="flex-none rounded-full p-1 text-muted-foreground hover:bg-primary/10"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
