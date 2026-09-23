@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag, Footprints } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +24,7 @@ import { ShareButton } from "@/components/ShareButton";
 import type { ShareCardInput } from "@/lib/shareCard";
 import { logProfileView, logMenuItemView } from "@/lib/analytics";
 import { buildDirectionsUrl } from "@/lib/directions";
+import { useNearbyWalkTime } from "@/hooks/useNearbyWalkTime";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -103,6 +104,14 @@ function RestaurantPage() {
     logProfileView(r.id);
   }, [r.id]);
 
+  // How far is this place on foot from wherever the user is (live GPS or a
+  // searched location — see LocationProvider)? Null both when unknown AND
+  // when further than NEARBY_WALK_MINUTES — past that you'd be ordering
+  // delivery anyway, so the action-buttons row just shows nothing rather
+  // than a useless "52 min walk". Shared with the map-pin preview card on
+  // Discover (see RestaurantPreview in index.tsx).
+  const walkMinutes = useNearbyWalkTime(r.id, r.latitude, r.longitude);
+
   // Arrived via a shared dish link (?dish=<id>) — scroll to it and briefly
   // highlight it so the recipient can immediately see what was shared.
   // Deliberately NOT tracked as separate component state: the restaurant
@@ -173,7 +182,7 @@ function RestaurantPage() {
         </div>
       </header>
 
-      <RestaurantActionButtons restaurant={r} />
+      <RestaurantActionButtons restaurant={r} walkMinutes={walkMinutes} />
 
       {filtersOn && (
         <div className="px-4 sm:px-6 mt-6">
@@ -253,48 +262,70 @@ function RestaurantPage() {
   );
 }
 
-function RestaurantActionButtons({ restaurant: r }: { restaurant: Restaurant }) {
+function RestaurantActionButtons({
+  restaurant: r,
+  walkMinutes,
+}: {
+  restaurant: Restaurant;
+  walkMinutes: number | null;
+}) {
   const hasDirections = r.latitude != null && r.longitude != null;
   const hasPhone = !!r.phone;
   const hasOrderLink = !!r.external_order_url;
   if (!hasDirections && !hasPhone && !hasOrderLink) return null;
 
+  // walkMinutes is already null unless it's a genuinely nearby walk — see
+  // useNearbyWalkTime.
+  const isNearby = walkMinutes != null;
+
   const buttonClass =
     "inline-flex h-11 flex-1 min-w-[130px] items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition active:scale-[0.98]";
 
   return (
-    <div className="px-4 sm:px-6 mt-4 flex flex-wrap gap-2">
-      {hasOrderLink && (
-        <a
-          href={r.external_order_url!}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`${buttonClass} bg-primary text-primary-foreground hover:opacity-95`}
-        >
-          <ShoppingBag className="h-4 w-4" /> Order Online
-        </a>
+    <div className="px-4 sm:px-6 mt-4">
+      {isNearby && (
+        <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
+          <Footprints className="h-4 w-4" /> {walkMinutes} min walk
+          {hasOrderLink && (
+            <span className="font-normal text-muted-foreground">
+              — order direct and skip the delivery commission
+            </span>
+          )}
+        </p>
       )}
-      {hasDirections && (
-        <button
-          type="button"
-          onClick={() => {
-            const url = buildDirectionsUrl(r.latitude!, r.longitude!, r.name);
-            window.open(url, "_blank", "noopener,noreferrer");
-          }}
-          className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
-        >
-          <Navigation className="h-4 w-4" /> Directions
-        </button>
-      )}
-      {hasPhone && (
-        <a
-          href={`tel:${r.phone!.replace(/[^0-9+]/g, "")}`}
-          aria-label={`Call ${r.name}`}
-          className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
-        >
-          <Phone className="h-4 w-4" /> Call
-        </a>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {hasOrderLink && (
+          <a
+            href={r.external_order_url!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${buttonClass} bg-primary text-primary-foreground hover:opacity-95`}
+          >
+            <ShoppingBag className="h-4 w-4" /> Order Online
+          </a>
+        )}
+        {hasDirections && (
+          <button
+            type="button"
+            onClick={() => {
+              const url = buildDirectionsUrl(r.latitude!, r.longitude!, r.name);
+              window.open(url, "_blank", "noopener,noreferrer");
+            }}
+            className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
+          >
+            <Navigation className="h-4 w-4" /> Directions
+          </button>
+        )}
+        {hasPhone && (
+          <a
+            href={`tel:${r.phone!.replace(/[^0-9+]/g, "")}`}
+            aria-label={`Call ${r.name}`}
+            className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
+          >
+            <Phone className="h-4 w-4" /> Call
+          </a>
+        )}
+      </div>
     </div>
   );
 }

@@ -16,6 +16,7 @@ import { FiltersProvider } from "../components/FiltersProvider";
 import { ProfileProvider } from "../components/ProfileProvider";
 import { CompareProvider } from "../components/CompareProvider";
 import { CompareLauncher } from "../components/CompareLauncher";
+import { LocationProvider } from "../components/LocationProvider";
 
 function NotFoundComponent() {
   return (
@@ -137,10 +138,12 @@ function RootComponent() {
       <SavedProvider>
         <FiltersProvider>
           <ProfileProvider>
-            <CompareProvider>
-              <Outlet />
-              <CompareLauncher />
-            </CompareProvider>
+            <LocationProvider>
+              <CompareProvider>
+                <Outlet />
+                <CompareLauncher />
+              </CompareProvider>
+            </LocationProvider>
           </ProfileProvider>
         </FiltersProvider>
       </SavedProvider>

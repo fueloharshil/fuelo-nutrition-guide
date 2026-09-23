@@ -52,6 +52,14 @@ export const TRAVEL_STEP = 5;
 // estimate (see the "~" in how it's displayed), not a personalized figure.
 export const STEPS_PER_MINUTE = 100;
 
+// The restaurant page's walk-time badge (see restaurants.$id.tsx) only
+// shows up to this many minutes away — beyond it, walking isn't a realistic
+// option (you'd be getting delivery instead), so showing a time at all
+// would just be noise. Under it, on the other hand, is exactly the nudge
+// that helps someone notice "I could just walk there and skip the delivery
+// commission" instead of defaulting to Deliveroo/Uber Eats.
+export const NEARBY_WALK_MINUTES = 30;
+
 /** Midpoint of a stored min/max range; null when both bounds are missing. */
 export function midpoint(min: number | null | undefined, max: number | null | undefined): number | null {
   if (min == null && max == null) return null;

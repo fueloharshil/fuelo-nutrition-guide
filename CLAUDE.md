@@ -85,6 +85,8 @@ GitHub.
 │   │   ├── CompareSheet.tsx       # Side-by-side compare table modal (opened by CompareLauncher)
 │   │   ├── ShareButton.tsx        # "Share this dish" icon button on a dish card, opens ShareSheet
 │   │   ├── ShareSheet.tsx         # Share modal: card preview + Share/Copy link/Download
+│   │   ├── LocationProvider.tsx   # Context (session-only): gpsLocation, manualLocation, effectiveLocation
+│   │   ├── LocationPicker.tsx     # Address/place search sheet — sets LocationProvider's manualLocation
 │   │   ├── WaitlistBanner.tsx     # Email capture → user_waitlist
 │   │   ├── ClaimRestaurantCard.tsx# Email capture → restaurant_leads ("Own this restaurant?")
 │   │   ├── NutritionChips.tsx     # kcal / P / C / F pills from a menu item
@@ -113,9 +115,13 @@ GitHub.
 │   │   ├── analytics.ts           # Fire-and-forget event loggers + fetchRestaurantAnalytics() for /verify
 │   │   ├── directions.ts          # buildDirectionsUrl(): Apple Maps vs Google Maps by device
 │   │   ├── travelTimes.ts         # fetchTravelTimes(): Mapbox Matrix API, real walking/cycling/driving times
+│   │   ├── geocoding.ts           # searchPlaces(): Mapbox Geocoding API, backs LocationPicker's address search
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
-│   ├── hooks/use-mobile.tsx
+│   ├── hooks/
+│   │   ├── use-mobile.tsx
+│   │   ├── useOwnerAuth.ts        # Owner/admin auth session + ADMIN_EMAIL (see Claim & verify flow below)
+│   │   └── useNearbyWalkTime.ts   # Shared "X min walk" hook — restaurant page + map-pin preview (see below)
 │   ├── styles.css                 # Tailwind v4 theme + cream/green design tokens (SOURCE OF TRUTH)
 │   ├── router.tsx                 # createRouter (QueryClient in context)
 │   ├── routeTree.gen.ts           # AUTO-GENERATED — never edit by hand
@@ -415,6 +421,59 @@ Added in migration `20260716090000_restaurant_events`.
 > assumption, not personalized; shown under the slider in `FilterSheet`
 > only, not repeated on every card tag (kept those to just "N min walk").
 
+> **"Near you" doesn't require being near anything — location is shared
+> app-wide via `LocationProvider`, not owned by Discover.**
+> `src/components/LocationProvider.tsx` (mounted in `__root.tsx`, alongside
+> Filters/Profile/Compare) holds `gpsLocation` (from Discover's
+> `watchPosition` — GPS-watching itself still only starts once Discover has
+> mounted at least once this session, unchanged from before; other pages
+> just read whatever's already there), `manualLocation` (a searched place),
+> and the derived `effectiveLocation = manualLocation ?? gpsLocation`
+> (**memoized in the provider** — an earlier unmemoized version caused a
+> real bug where every render's new array reference retriggered and
+> cancelled the travel-times effect before it could resolve, permanently
+> stuck on "Getting travel times…"). Any component calls
+> `useLocationContext()` to read it. On Discover, a location pill below the
+> search bar ("Near you" / a searched place, "Change") opens
+> `LocationPicker.tsx` — live address/place search via Mapbox's Geocoding
+> API (`src/lib/geocoding.ts`, `searchPlaces()`, same `VITE_MAPBOX_TOKEN`,
+> debounced 300ms) plus "Use my current location" to revert to GPS. Setting
+> a manual location overrides GPS everywhere it's read: map centering, the
+> travel-time filter's origin, and (see below) the restaurant page's walk
+> badge — GPS keeps updating in the background regardless, it's just not
+> *effective* while a manual location is set. This is also the practical way
+> to test any location-dependent feature from outside the seed restaurants'
+> area — e.g. search "Dalston, London" from anywhere in the world.
+
+> **"X min walk" shows on the restaurant page and the map-pin preview card
+> — but only when it's actually a realistic walk.**
+> `useNearbyWalkTime(id, lat, lng)` (`src/hooks/useNearbyWalkTime.ts`) is the
+> shared hook behind both: it fetches real walking time from
+> `effectiveLocation` to one restaurant (`fetchTravelTimes()` from
+> `src/lib/travelTimes.ts` — the same Matrix API helper Discover's bulk
+> travel-time filter uses, just called with a single destination) and
+> returns `null` both when it's unknown **and** when it's further than
+> `NEARBY_WALK_MINUTES` (30, `src/lib/filters.ts`) — beyond that you'd be
+> ordering delivery anyway, so showing a time would just be noise. Confirmed
+> live: a restaurant 2 min from Dalston shows the badge, the same restaurant
+> from Croydon doesn't, on both surfaces.
+> - **Restaurant page** (`RestaurantActionButtons` in `restaurants.$id.tsx`):
+>   shown above the action buttons; if `external_order_url` is also set, adds
+>   "— order direct and skip the delivery commission" — the actual point of
+>   showing this at all: nudge someone who'd default to Deliveroo/Uber Eats
+>   toward collecting in person and ordering direct instead, when it's
+>   genuinely walkable.
+> - **Map-pin preview card** (`RestaurantPreview` in `index.tsx`): shown
+>   as a `TravelTag` alongside "Fits your goal", independent of whether
+>   Discover's travel-time filter is on — tapping a pin should say "3 min
+>   walk" without needing to open Filters first. Only one restaurant is ever
+>   previewed at a time, so this single-destination fetch is cheap.
+> - **Deliberately NOT on List view's `RestaurantCard`** — that shows many
+>   cards at once, and `useNearbyWalkTime` firing once per card would mean
+>   one Matrix request per restaurant instead of the one bulk request the
+>   filter path already batches. List cards still only show travel info when
+>   the travel-time filter's bulk fetch has it (unchanged).
+
 > **Compare is session-only, not persisted.** Up to `MAX_COMPARE` (3) dishes,
 > selectable via `CompareToggleButton` on any dish card (restaurant page +
 > Feed) — a full snapshot (`CompareItem`, not just an id) is captured at
@@ -456,9 +515,9 @@ Added in migration `20260716090000_restaurant_events`.
 
 | Route | File | What it is |
 | --- | --- | --- |
-| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved link + a **Settings** cog — see below), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`) plus a **travel-time filter** (see below). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with "Fits your goal" / travel-time tags if applicable. List = restaurant cards, same tags when applicable. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
+| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved link + a **Settings** cog — see below), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), a **location pill** ("Near you" / a searched place · "Change" — see below) below it, **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`) plus a **travel-time filter** (see below). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with "Fits your goal" / travel-time tags if applicable. List = restaurant cards, same tags when applicable. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
 | `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Each dish card has a **"+ Compare"** toggle. Bottom nav present. |
-| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, **action buttons** (Order Online / Directions / Call — see below, only the ones with data show), dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
+| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, a **"X min walk" badge** when genuinely nearby (see below), **action buttons** (Order Online / Directions / Call — see below, only the ones with data show), dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
 | `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |

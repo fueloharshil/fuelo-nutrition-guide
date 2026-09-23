@@ -19,6 +19,10 @@ import {
 } from "@/lib/filters";
 import { logSearchMatches } from "@/lib/analytics";
 import { fetchTravelTimes, haversineMeters, type TravelTimeResult } from "@/lib/travelTimes";
+import { LocationPicker } from "@/components/LocationPicker";
+import type { GeocodeResult } from "@/lib/geocoding";
+import { useLocationContext } from "@/components/LocationProvider";
+import { useNearbyWalkTime } from "@/hooks/useNearbyWalkTime";
 import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
@@ -91,9 +95,19 @@ function Discover() {
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [hydrated, setHydrated] = useState(false);
+
+  // Shared app-wide (LocationProvider, mounted in __root.tsx) so a location
+  // set here — live GPS or a manually searched place via LocationPicker —
+  // carries over to other pages too, e.g. the restaurant page's "X min
+  // walk" badge. See effectiveLocation there for why it's memoized in the
+  // provider rather than recomputed as a fresh array on every render here.
+  const { gpsLocation, setGpsLocation, manualLocation, setManualLocation, effectiveLocation } =
+    useLocationContext();
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const manualLocationRef = useRef(manualLocation);
+  manualLocationRef.current = manualLocation;
 
   useEffect(() => {
     setHydrated(true);
@@ -102,8 +116,8 @@ function Discover() {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setUserLocation(loc);
-        if (!recenteredOnce) {
+        setGpsLocation(loc);
+        if (!recenteredOnce && !manualLocationRef.current) {
           recenteredOnce = true;
           setCenter(loc);
         }
@@ -112,7 +126,18 @@ function Discover() {
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 },
     );
     return () => navigator.geolocation.clearWatch(watchId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function selectManualLocation(result: GeocodeResult) {
+    setManualLocation({ lat: result.lat, lng: result.lng, label: result.label });
+    setCenter([result.lat, result.lng]);
+  }
+
+  function useCurrentLocation() {
+    setManualLocation(null);
+    if (gpsLocation) setCenter(gpsLocation);
+  }
 
   // Real walking/cycling/driving times from Mapbox's Matrix API (see
   // src/lib/travelTimes.ts), fetched once per travel mode / meaningful move
@@ -126,12 +151,12 @@ function Discover() {
   const lastTravelFetchRef = useRef<{ lat: number; lng: number; mode: string } | null>(null);
 
   useEffect(() => {
-    if (!filters.travel || !userLocation) {
+    if (!filters.travel || !effectiveLocation) {
       setTravelTimes(null);
       lastTravelFetchRef.current = null;
       return;
     }
-    const origin = { lat: userLocation[0], lng: userLocation[1] };
+    const origin = { lat: effectiveLocation[0], lng: effectiveLocation[1] };
     const last = lastTravelFetchRef.current;
     const moved = !last || haversineMeters(last, origin) > 100;
     const modeChanged = last?.mode !== filters.travel.mode;
@@ -152,7 +177,7 @@ function Discover() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.travel?.mode, userLocation, data.restaurants]);
+  }, [filters.travel?.mode, effectiveLocation, data.restaurants]);
 
   // Distinct cuisine tags actually present across restaurants, for the
   // "Trending near you" tiles. Deduped by exact tag (the taxonomy is canonical,
@@ -295,6 +320,7 @@ function Discover() {
 
       <div className="px-4 pt-3 pb-2 sm:px-6">
         <SearchBar value={query} onChange={setQuery} />
+        <LocationBar label={manualLocation?.label ?? null} onClick={() => setLocationPickerOpen(true)} />
         <div className="mt-3 flex items-center justify-between gap-3">
           <ViewToggle view={view} onChange={setView} />
           <div className="flex items-center gap-2">
@@ -317,7 +343,7 @@ function Discover() {
               <DiscoverMap
                 restaurants={filtered}
                 center={center}
-                userLocation={userLocation}
+                userLocation={effectiveLocation}
                 onSelect={setSelected}
                 activeId={selected?.id}
                 badges={badges}
@@ -370,7 +396,15 @@ function Discover() {
         open={filtersOpen}
         onClose={closeFilters}
         resultCount={filtered.length}
-        hasLocation={!!userLocation}
+        hasLocation={!!effectiveLocation}
+      />
+
+      <LocationPicker
+        open={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+        onSelect={selectManualLocation}
+        onUseCurrentLocation={useCurrentLocation}
+        hasGps={!!gpsLocation}
       />
 
       <BottomNav active="discover" />
@@ -642,6 +676,19 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
+function LocationBar({ label, onClick }: { label: string | null; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-1 py-1 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+    >
+      <MapPin className="h-3.5 w-3.5 flex-none text-primary" />
+      <span className="truncate">{label ?? "Near you"}</span>
+      <span className="flex-none text-primary underline-offset-2">Change</span>
+    </button>
+  );
+}
+
 function ViewToggle({ view, onChange }: { view: "map" | "list"; onChange: (v: "map" | "list") => void }) {
   return (
     <div className="inline-flex rounded-full bg-secondary p-1 text-sm font-medium">
@@ -813,6 +860,17 @@ function RestaurantPreview({
   fitsGoal?: boolean;
   travel?: TravelInfo | null;
 }) {
+  // Always shows a walk time when it's genuinely nearby, regardless of
+  // whether the travel-time filter is on — tapping a pin should tell you
+  // "3 min walk" without needing to dig into Filters first. Only one
+  // restaurant is ever previewed at a time, so this single-destination
+  // fetch is cheap (unlike the list view's many cards — see RestaurantCard,
+  // which still only shows travel info when the filter's bulk fetch has it).
+  const walkMinutes = useNearbyWalkTime(restaurant.id, restaurant.latitude, restaurant.longitude);
+  // Avoid showing the same "X min walk" twice if the travel-time filter is
+  // also set to Walking.
+  const showWalkBadge = walkMinutes != null && travel?.mode !== "walking";
+
   return (
     <div className="absolute inset-x-3 bottom-3 z-[400] rounded-2xl bg-card p-4 shadow-[var(--shadow-float)]">
       <button
@@ -827,10 +885,11 @@ function RestaurantPreview({
       <p className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
         <MapPin className="h-3 w-3" /> {restaurant.area}
       </p>
-      {(fitsGoal || travel) && (
+      {(fitsGoal || travel || showWalkBadge) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {fitsGoal && <GoalFitTag />}
           {travel && <TravelTag mode={travel.mode} minutes={travel.minutes} />}
+          {showWalkBadge && <TravelTag mode="walking" minutes={walkMinutes} />}
         </div>
       )}
       <Link
