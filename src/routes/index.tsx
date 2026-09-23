@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User, SlidersHorizontal, Target, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User, SlidersHorizontal, Target, ChevronRight, Footprints, Bike, Car } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
@@ -14,8 +14,11 @@ import {
   dishMatchesFilters,
   hasDishLevelFilters,
   matchingFilterLabels,
+  travelLabel,
+  type TravelMode,
 } from "@/lib/filters";
 import { logSearchMatches } from "@/lib/analytics";
+import { fetchTravelTimes, haversineMeters, type TravelTimeResult } from "@/lib/travelTimes";
 import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
@@ -101,6 +104,46 @@ function Discover() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
+  // Real walking/cycling/driving times from Mapbox's Matrix API (see
+  // src/lib/travelTimes.ts), fetched once per travel mode / meaningful move
+  // — not on every GPS tick, which would spam the API for no benefit while
+  // standing still. Fetched for every restaurant with coordinates regardless
+  // of other active filters, so toggling cuisine/calories/etc. never needs a
+  // refetch; only the "Within X min" threshold (applied below, no refetch)
+  // narrows results further.
+  const [travelTimes, setTravelTimes] = useState<Map<string, TravelTimeResult> | null>(null);
+  const [travelLoading, setTravelLoading] = useState(false);
+  const lastTravelFetchRef = useRef<{ lat: number; lng: number; mode: string } | null>(null);
+
+  useEffect(() => {
+    if (!filters.travel || !userLocation) {
+      setTravelTimes(null);
+      lastTravelFetchRef.current = null;
+      return;
+    }
+    const origin = { lat: userLocation[0], lng: userLocation[1] };
+    const last = lastTravelFetchRef.current;
+    const moved = !last || haversineMeters(last, origin) > 100;
+    const modeChanged = last?.mode !== filters.travel.mode;
+    if (!moved && !modeChanged) return;
+
+    let cancelled = false;
+    lastTravelFetchRef.current = { ...origin, mode: filters.travel.mode };
+    setTravelLoading(true);
+    const destinations = data.restaurants
+      .filter((r) => r.latitude != null && r.longitude != null)
+      .map((r) => ({ id: r.id, lat: r.latitude as number, lng: r.longitude as number }));
+    fetchTravelTimes(origin, destinations, filters.travel.mode).then((result) => {
+      if (cancelled) return;
+      setTravelLoading(false);
+      if (result) setTravelTimes(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.travel?.mode, userLocation, data.restaurants]);
+
   // Distinct cuisine tags actually present across restaurants, for the
   // "Trending near you" tiles. Deduped by exact tag (the taxonomy is canonical,
   // so tiles can never duplicate), ordered by how many restaurants carry each
@@ -180,6 +223,12 @@ function Discover() {
       const tags = restaurantCuisines(r);
       if (filters.cuisine && !tags.includes(filters.cuisine)) return false;
       if (matchingRestaurantIds && !matchingRestaurantIds.has(r.id)) return false;
+      // Only narrows results once travel times have actually loaded — before
+      // that, ignore the threshold rather than flashing to an empty list.
+      if (filters.travel?.maxMinutes != null && travelTimes) {
+        const t = travelTimes.get(r.id);
+        if (!t || t.minutes > filters.travel.maxMinutes) return false;
+      }
       if (!q) return true;
       return (
         r.name.toLowerCase().includes(q) ||
@@ -188,7 +237,7 @@ function Discover() {
         dishHits!.has(r.id)
       );
     });
-  }, [query, filters, data, matchingRestaurantIds]);
+  }, [query, filters, data, matchingRestaurantIds, travelTimes]);
 
   // Owner-facing analytics: when the filter sheet closes with active
   // dish-level filters, log a search-visibility event for every restaurant
@@ -240,7 +289,9 @@ function Discover() {
           <ViewToggle view={view} onChange={setView} />
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
-              {filtered.length} {filtered.length === 1 ? "spot" : "spots"}
+              {travelLoading
+                ? "Getting travel times…"
+                : `${filtered.length} ${filtered.length === 1 ? "spot" : "spots"}`}
             </span>
             <FilterButton count={activeFilterCount(filters)} onClick={() => setFiltersOpen(true)} />
           </div>
@@ -270,6 +321,11 @@ function Discover() {
               restaurant={selected}
               onClose={() => setSelected(null)}
               fitsGoal={goalFitRestaurantIds?.has(selected.id) ?? false}
+              travel={
+                filters.travel
+                  ? { mode: filters.travel.mode, minutes: travelTimes?.get(selected.id)?.minutes ?? null }
+                  : null
+              }
             />
           )}
         </div>
@@ -278,7 +334,15 @@ function Discover() {
           <ul className="grid gap-3">
             {filtered.map((r) => (
               <li key={r.id}>
-                <RestaurantCard restaurant={r} fitsGoal={goalFitRestaurantIds?.has(r.id) ?? false} />
+                <RestaurantCard
+                  restaurant={r}
+                  fitsGoal={goalFitRestaurantIds?.has(r.id) ?? false}
+                  travel={
+                    filters.travel
+                      ? { mode: filters.travel.mode, minutes: travelTimes?.get(r.id)?.minutes ?? null }
+                      : null
+                  }
+                />
               </li>
             ))}
             {filtered.length === 0 && (
@@ -292,7 +356,12 @@ function Discover() {
 
       <Disclaimer />
 
-      <FilterSheet open={filtersOpen} onClose={closeFilters} resultCount={filtered.length} />
+      <FilterSheet
+        open={filtersOpen}
+        onClose={closeFilters}
+        resultCount={filtered.length}
+        hasLocation={!!userLocation}
+      />
 
       <BottomNav active="discover" />
     </main>
@@ -577,6 +646,12 @@ function ActiveFiltersRow() {
     chips.push({ key: `diet-${d}`, label: d, onRemove: () => toggleDietary(d) });
   if (filters.cuisine != null)
     chips.push({ key: "cuisine", label: filters.cuisine, onRemove: () => patch({ cuisine: null }) });
+  if (filters.travel != null)
+    chips.push({
+      key: "travel",
+      label: travelLabel(filters.travel.mode, filters.travel.maxMinutes),
+      onRemove: () => patch({ travel: null }),
+    });
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -604,7 +679,17 @@ function MapSkeleton() {
   return <div className="h-full w-full bg-muted animate-pulse" />;
 }
 
-function RestaurantCard({ restaurant, fitsGoal = false }: { restaurant: Restaurant; fitsGoal?: boolean }) {
+type TravelInfo = { mode: TravelMode; minutes: number | null };
+
+function RestaurantCard({
+  restaurant,
+  fitsGoal = false,
+  travel = null,
+}: {
+  restaurant: Restaurant;
+  fitsGoal?: boolean;
+  travel?: TravelInfo | null;
+}) {
   return (
     <Link
       to="/restaurants/$id"
@@ -621,7 +706,12 @@ function RestaurantCard({ restaurant, fitsGoal = false }: { restaurant: Restaura
         </div>
         {restaurant.verified && <StatusBadge verified />}
       </div>
-      {fitsGoal && <GoalFitTag className="mt-2" />}
+      {(fitsGoal || travel) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {fitsGoal && <GoalFitTag />}
+          {travel && <TravelTag mode={travel.mode} minutes={travel.minutes} />}
+        </div>
+      )}
     </Link>
   );
 }
@@ -637,14 +727,28 @@ function GoalFitTag({ className = "" }: { className?: string }) {
   );
 }
 
+function TravelTag({ mode, minutes, className = "" }: { mode: TravelMode; minutes: number | null; className?: string }) {
+  const Icon = mode === "walking" ? Footprints : mode === "cycling" ? Bike : Car;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary ${className}`}
+    >
+      <Icon className="h-3 w-3" />
+      {travelLabel(mode, minutes)}
+    </span>
+  );
+}
+
 function RestaurantPreview({
   restaurant,
   onClose,
   fitsGoal = false,
+  travel = null,
 }: {
   restaurant: Restaurant;
   onClose: () => void;
   fitsGoal?: boolean;
+  travel?: TravelInfo | null;
 }) {
   return (
     <div className="absolute inset-x-3 bottom-3 z-[400] rounded-2xl bg-card p-4 shadow-[var(--shadow-float)]">
@@ -660,7 +764,12 @@ function RestaurantPreview({
       <p className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
         <MapPin className="h-3 w-3" /> {restaurant.area}
       </p>
-      {fitsGoal && <GoalFitTag className="mt-2" />}
+      {(fitsGoal || travel) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {fitsGoal && <GoalFitTag />}
+          {travel && <TravelTag mode={travel.mode} minutes={travel.minutes} />}
+        </div>
+      )}
       <Link
         to="/restaurants/$id"
         params={{ id: restaurant.id }}

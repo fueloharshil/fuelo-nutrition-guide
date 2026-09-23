@@ -9,11 +9,22 @@
 export type DietaryKey = "Vegan" | "Vegetarian" | "Gluten Free";
 export const DIETARY_KEYS: DietaryKey[] = ["Vegan", "Vegetarian", "Gluten Free"];
 
+// Walking/cycling are the promoted default modes (see TRAVEL_MODES below);
+// driving is available but de-emphasized in the UI.
+export type TravelMode = "walking" | "cycling" | "driving";
+
+// Picking a mode turns on travel-time *display* (a time/steps tag on every
+// restaurant card) without narrowing results. maxMinutes additionally turns
+// that into a *filter* — null means "Any" (show the time, don't exclude
+// anything), matching how maxCalories/minProtein already work.
+export type TravelFilter = { mode: TravelMode; maxMinutes: number | null };
+
 export type DiscoverFilters = {
   maxCalories: number | null;
   minProtein: number | null;
   dietary: DietaryKey[];
   cuisine: string | null;
+  travel: TravelFilter | null;
 };
 
 export const EMPTY_FILTERS: DiscoverFilters = {
@@ -21,6 +32,7 @@ export const EMPTY_FILTERS: DiscoverFilters = {
   minProtein: null,
   dietary: [],
   cuisine: null,
+  travel: null,
 };
 
 // Slider bounds, derived from the real data spread (calorie midpoints 0–1400,
@@ -31,6 +43,14 @@ export const CAL_STEP = 50;
 export const PROTEIN_MIN = 0;
 export const PROTEIN_MAX = 80;
 export const PROTEIN_STEP = 5;
+
+export const TRAVEL_MIN = 5;
+export const TRAVEL_MAX = 60; // slider max = "Any" (maxMinutes: null)
+export const TRAVEL_STEP = 5;
+
+// ~100 steps/minute at a typical walking pace — a rough, clearly-labelled
+// estimate (see the "~" in how it's displayed), not a personalized figure.
+export const STEPS_PER_MINUTE = 100;
 
 /** Midpoint of a stored min/max range; null when both bounds are missing. */
 export function midpoint(min: number | null | undefined, max: number | null | undefined): number | null {
@@ -90,7 +110,7 @@ export function hasDishLevelFilters(f: DiscoverFilters): boolean {
 
 /** True when any filter at all is set. */
 export function anyFilterActive(f: DiscoverFilters): boolean {
-  return hasDishLevelFilters(f) || f.cuisine != null;
+  return hasDishLevelFilters(f) || f.cuisine != null || f.travel != null;
 }
 
 // Display labels for each dish-level filter criterion, used by search-match
@@ -134,5 +154,27 @@ export function activeFilterCount(f: DiscoverFilters): number {
   if (f.minProtein != null) n++;
   n += f.dietary.length;
   if (f.cuisine != null) n++;
+  if (f.travel != null) n++;
   return n;
+}
+
+const TRAVEL_MODE_LABEL: Record<TravelMode, string> = {
+  walking: "Walking",
+  cycling: "Cycling",
+  driving: "Driving",
+};
+
+/** Estimated step count for a walk of this many minutes, one-way and round
+ *  trip (there-and-back), from the ~100 steps/minute assumption above. */
+export function estimateSteps(minutes: number): { oneWay: number; roundTrip: number } {
+  const oneWay = Math.round(minutes * STEPS_PER_MINUTE);
+  return { oneWay, roundTrip: oneWay * 2 };
+}
+
+/** Short label for a travel-time tag/chip, e.g. "12 min walk" or
+ *  "Walking" when no specific time is known yet (still loading). */
+export function travelLabel(mode: TravelMode, minutes: number | null): string {
+  if (minutes == null) return TRAVEL_MODE_LABEL[mode];
+  const verb = mode === "walking" ? "walk" : mode === "cycling" ? "cycle" : "drive";
+  return `${minutes} min ${verb}`;
 }

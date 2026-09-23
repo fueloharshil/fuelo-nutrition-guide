@@ -1,4 +1,4 @@
-import { X, SlidersHorizontal, Check } from "lucide-react";
+import { X, SlidersHorizontal, Check, Footprints, Bike, Car } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { useFilters } from "@/components/FiltersProvider";
 import {
@@ -8,20 +8,33 @@ import {
   PROTEIN_MAX,
   PROTEIN_MIN,
   PROTEIN_STEP,
+  TRAVEL_MIN,
+  TRAVEL_MAX,
+  TRAVEL_STEP,
   DIETARY_KEYS,
   activeFilterCount,
   anyFilterActive,
+  estimateSteps,
+  type TravelMode,
 } from "@/lib/filters";
 import { CUISINE_GROUPS } from "@/lib/cuisines";
+
+const TRAVEL_MODES: { mode: TravelMode; label: string; icon: typeof Footprints; promoted: boolean }[] = [
+  { mode: "walking", label: "Walking", icon: Footprints, promoted: true },
+  { mode: "cycling", label: "Cycling", icon: Bike, promoted: true },
+  { mode: "driving", label: "Driving", icon: Car, promoted: false },
+];
 
 export function FilterSheet({
   open,
   onClose,
   resultCount,
+  hasLocation,
 }: {
   open: boolean;
   onClose: () => void;
   resultCount: number;
+  hasLocation: boolean;
 }) {
   const { filters, patch, toggleDietary, reset } = useFilters();
   if (!open) return null;
@@ -29,7 +42,16 @@ export function FilterSheet({
   // Slider positions. The extreme end of each slider means "no limit".
   const calValue = filters.maxCalories ?? CAL_MAX;
   const proteinValue = filters.minProtein ?? PROTEIN_MIN;
+  const travelValue = filters.travel?.maxMinutes ?? TRAVEL_MAX;
   const count = activeFilterCount(filters);
+
+  function selectTravelMode(mode: TravelMode) {
+    if (filters.travel?.mode === mode) {
+      patch({ travel: null }); // tap the active mode again to turn the filter off
+    } else {
+      patch({ travel: { mode, maxMinutes: filters.travel?.maxMinutes ?? null } });
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[600] flex items-end justify-center sm:items-center">
@@ -58,6 +80,71 @@ export function FilterSheet({
 
         {/* Body */}
         <div className="space-y-6 overflow-y-auto px-5 py-5">
+          {/* Travel time — walking/cycling promoted, driving still one tap away */}
+          <section>
+            <label className="mb-2 block text-sm font-semibold">Travel time</label>
+            {!hasLocation && (
+              <p className="mb-2 text-xs text-muted-foreground">
+                Enable location access on Discover to filter by travel time.
+              </p>
+            )}
+            <div className={`flex gap-2 ${!hasLocation ? "pointer-events-none opacity-40" : ""}`}>
+              {TRAVEL_MODES.map(({ mode, label, icon: Icon, promoted }) => {
+                const active = filters.travel?.mode === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => selectTravelMode(mode)}
+                    aria-pressed={active}
+                    className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98] ${
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : promoted
+                          ? "bg-accent text-accent-foreground hover:opacity-90"
+                          : "bg-secondary text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" /> {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {filters.travel && hasLocation && (
+              <div className="mt-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Within</span>
+                  <span className="text-sm font-semibold tabular-nums text-primary">
+                    {filters.travel.maxMinutes == null ? "Any" : `${filters.travel.maxMinutes} min`}
+                  </span>
+                </div>
+                <Slider
+                  min={TRAVEL_MIN}
+                  max={TRAVEL_MAX}
+                  step={TRAVEL_STEP}
+                  value={[travelValue]}
+                  onValueChange={([v]) =>
+                    patch({
+                      travel: { mode: filters.travel!.mode, maxMinutes: v >= TRAVEL_MAX ? null : v },
+                    })
+                  }
+                  aria-label="Maximum travel time"
+                />
+                <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+                  <span>{TRAVEL_MIN} min</span>
+                  <span>Any</span>
+                </div>
+                {filters.travel.mode === "walking" && filters.travel.maxMinutes != null && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    ≈ {estimateSteps(filters.travel.maxMinutes).oneWay.toLocaleString()} steps one way ·{" "}
+                    {estimateSteps(filters.travel.maxMinutes).roundTrip.toLocaleString()} steps there
+                    and back
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Max calories */}
           <section>
             <div className="mb-2 flex items-center justify-between">

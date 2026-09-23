@@ -112,6 +112,7 @@ GitHub.
 │   │   ├── share.ts               # buildDishShareUrl(), Web Share/Clipboard feature detection
 │   │   ├── analytics.ts           # Fire-and-forget event loggers + fetchRestaurantAnalytics() for /verify
 │   │   ├── directions.ts          # buildDirectionsUrl(): Apple Maps vs Google Maps by device
+│   │   ├── travelTimes.ts         # fetchTravelTimes(): Mapbox Matrix API, real walking/cycling/driving times
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
 │   ├── hooks/use-mobile.tsx
@@ -377,6 +378,28 @@ Added in migration `20260716090000_restaurant_events`.
 > `/profile` instead; once a goal exists, that prompt disappears and the tags
 > are the only surfacing.
 
+> **Travel-time filter uses real routes, not straight-line distance.**
+> `FilterSheet`'s "Travel time" section (Walking/Cycling/Driving — walking
+> and cycling visually promoted with a green accent tint even when inactive,
+> Driving plain grey) + a "Within X min" slider (`TRAVEL_MIN`/`MAX`/`STEP` in
+> `src/lib/filters.ts`; `Any` at the max = display-only, no filtering) is a
+> single `filters.travel: { mode, maxMinutes } | null` — picking a mode alone
+> turns on *display* (a time tag on every card/pin), setting `maxMinutes`
+> additionally turns on *filtering*, mirroring how `maxCalories`/`minProtein`
+> already distinguish "set" from "Any". Real durations come from **Mapbox's
+> Matrix API** (`src/lib/travelTimes.ts`, `fetchTravelTimes()`) — one request
+> computes origin-to-every-restaurant time/distance at once (chunked at 24
+> destinations, the API's per-request cap), using the same `VITE_MAPBOX_TOKEN`
+> already set up for the map. Refetches only on a mode change or when the
+> user moves >100m (`haversineMeters()`), not on every GPS tick. If the
+> Matrix request fails (no token, network, scope) it degrades to `null` and
+> the travel filter/tags simply don't narrow or show anything, same
+> degrade-gracefully pattern as `fetchRestaurantAnalytics()`. For walking,
+> `estimateSteps()` assumes **`STEPS_PER_MINUTE` = 100** (one-way steps =
+> minutes × 100, round trip × 2) — a rough, explicitly-labelled ("≈")
+> assumption, not personalized; shown under the slider in `FilterSheet`
+> only, not repeated on every card tag (kept those to just "N min walk").
+
 > **Compare is session-only, not persisted.** Up to `MAX_COMPARE` (3) dishes,
 > selectable via `CompareToggleButton` on any dish card (restaurant page +
 > Feed) — a full snapshot (`CompareItem`, not just an id) is captured at
@@ -418,7 +441,7 @@ Added in migration `20260716090000_restaurant_events`.
 
 | Route | File | What it is |
 | --- | --- | --- |
-| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with a "Fits your goal" tag if applicable. List = restaurant cards, same "Fits your goal" tag when a goal is set and the restaurant has a qualifying dish. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
+| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`) plus a **travel-time filter** (see below). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with "Fits your goal" / travel-time tags if applicable. List = restaurant cards, same tags when applicable. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
 | `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Each dish card has a **"+ Compare"** toggle. Bottom nav present. |
 | `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, **action buttons** (Order Online / Directions / Call — see below, only the ones with data show), dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
@@ -504,7 +527,9 @@ CSS variables and Tailwind semantic classes (`bg-background`, `text-primary`,
 > domain(s) in the Mapbox dashboard for production, not required for local
 > dev). Without a token the map container still renders but the basemap/pins
 > never load (Mapbox's style request fails silently rather than crashing the
-> page).
+> page). The same token also powers the travel-time filter's Matrix API calls
+> (`src/lib/travelTimes.ts`) — no separate setup; without a token that
+> degrades the same way (filter/tags just don't show anything).
 
 **Verification / confidence language (consistent across the app):**
 
