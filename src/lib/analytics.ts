@@ -122,6 +122,30 @@ export async function fetchRestaurantAnalytics(
   return { profileViews, topDishes, searchesThisWeek, filterBreakdown };
 }
 
+/** Profile-view counts for every restaurant over the last 30 days, in one
+ *  query — used by the admin overview page rather than calling
+ *  fetchRestaurantAnalytics() once per restaurant. Relies on the admin RLS
+ *  policy (any other signed-in visitor can only read their own restaurant's
+ *  events, so this returns an empty map for them). Degrades to an empty map
+ *  rather than throwing, same as the rest of this file. */
+export async function fetchAllProfileViewsThisMonth(): Promise<Map<string, number>> {
+  const since = new Date(Date.now() - 30 * DAY_MS).toISOString();
+  const { data, error } = await dbPending
+    .from("restaurant_events")
+    .select("restaurant_id")
+    .eq("event_type", "profile_view")
+    .gte("created_at", since);
+  if (error) {
+    console.warn("[analytics] restaurant_events unavailable:", error.message);
+    return new Map();
+  }
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as { restaurant_id: string }[]) {
+    counts.set(row.restaurant_id, (counts.get(row.restaurant_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export type Trend = { direction: "up" | "down" | "flat" | "new"; pct: number | null };
 
 /** Compares `cur` (this period) to `prev` (the one before it) for a small

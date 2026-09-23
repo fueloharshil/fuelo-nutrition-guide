@@ -286,6 +286,15 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 > `http://localhost:8080/**` (lets magic links resolve when testing locally).
 > Without this the `/verify` and `/admin` login links render but don't
 > complete sign-in.
+>
+> **`/admin-overview`'s "claim status" is derived, not stored.** Per
+> restaurant: **Unclaimed** if no `restaurant_owners` row has its
+> `restaurant_id`; else **Claimed**; else **Verified owner** once that owner
+> has verified at least one dish (not 100% — this tracks "has the owner
+> engaged at all," which the row's own "% verified" column already shows in
+> full). The lead count on that page matches `restaurant_leads.restaurant_name`
+> (free text, no FK) to the restaurant's name case/whitespace-insensitively —
+> a lead with a typo'd or blank name just won't be counted.
 
 ### `restaurant_events`  — owner-facing analytics (profile/dish views, search visibility)
 
@@ -400,7 +409,8 @@ Added in migration `20260716090000_restaurant_events`.
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
 | `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
-| `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. No bottom nav. |
+| `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. Links to `/admin-overview`. No bottom nav. |
+| `/admin-overview` | `routes/admin-overview.tsx` | **Admin restaurant overview** — same magic-link/admin gate as `/admin`, a separate internal-only page (not for restaurant owners) listing every restaurant in one table for outreach tracking: dish count, % verified, profile views in the last 30 days, claim-lead count, and a claim-status badge (Unclaimed / Claimed / Verified owner). Links back to `/admin`. No bottom nav. |
 
 **Bottom navigation** (`BottomNav.tsx`) — persistent 4-tab bar (Discover / Feed / Saved / Profile) rendered by each of those 4 route files (not by `__root.tsx`, so the restaurant detail page can opt out). Active tab is green with a small dot indicator + bold label.
 

@@ -13,6 +13,7 @@ import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as SavedRouteImport } from './routes/saved'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as AdminOverviewRouteImport } from './routes/admin-overview'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RestaurantsIdRouteImport } from './routes/restaurants.$id'
@@ -37,6 +38,11 @@ const FeedRoute = FeedRouteImport.update({
   path: '/feed',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminOverviewRoute = AdminOverviewRouteImport.update({
+  id: '/admin-overview',
+  path: '/admin-overview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -56,6 +62,7 @@ const RestaurantsIdRoute = RestaurantsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/admin-overview': typeof AdminOverviewRoute
   '/feed': typeof FeedRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/admin-overview': typeof AdminOverviewRoute
   '/feed': typeof FeedRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/admin-overview': typeof AdminOverviewRoute
   '/feed': typeof FeedRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/admin-overview'
     | '/feed'
     | '/profile'
     | '/saved'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/admin-overview'
     | '/feed'
     | '/profile'
     | '/saved'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/admin-overview'
     | '/feed'
     | '/profile'
     | '/saved'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  AdminOverviewRoute: typeof AdminOverviewRoute
   FeedRoute: typeof FeedRoute
   ProfileRoute: typeof ProfileRoute
   SavedRoute: typeof SavedRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin-overview': {
+      id: '/admin-overview'
+      path: '/admin-overview'
+      fullPath: '/admin-overview'
+      preLoaderRoute: typeof AdminOverviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  AdminOverviewRoute: AdminOverviewRoute,
   FeedRoute: FeedRoute,
   ProfileRoute: ProfileRoute,
   SavedRoute: SavedRoute,

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { LogOut, Loader2, Link2 } from "lucide-react";
@@ -191,6 +191,13 @@ function AdminConsole() {
 
   return (
     <div className="mt-6 space-y-6">
+      <Link
+        to="/admin-overview"
+        className="inline-block text-sm font-semibold text-primary underline-offset-2 hover:underline"
+      >
+        ← Restaurant overview (outreach tracking)
+      </Link>
+
       <form onSubmit={link} className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
         <h2 className="text-base font-bold tracking-tight">Approve &amp; link an owner</h2>
         <p className="mt-1 text-sm text-muted-foreground">
