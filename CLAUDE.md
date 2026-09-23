@@ -378,6 +378,21 @@ Added in migration `20260716090000_restaurant_events`.
 > `/profile` instead; once a goal exists, that prompt disappears and the tags
 > are the only surfacing.
 
+> **The Settings cog (`SettingsMenu` in `index.tsx`) is not an account
+> menu — there's nothing to log into.** It's a Radix `DropdownMenu`
+> (`src/components/ui/dropdown-menu.tsx`, scaffolded by Lovable but unused
+> until this) over what already exists: a link to `/profile` and to
+> `/saved`, plus **"Clear my data"** — a `window.confirm()`-gated action that
+> removes every `fuelo*` `localStorage` key (`PROFILE_KEY`/`SAVED_KEY`/
+> `WAITLIST_DISMISS_KEY`/`WAITLIST_DONE_KEY`, each now exported from its
+> owning provider file rather than hardcoded here) and reloads — the closest
+> local equivalent to "sign out". No "log out" or "addresses": there's no
+> session to end and no ordering flow for an address to serve yet. If Fuelo
+> gets real consumer accounts later (Supabase Auth + a profile/addresses
+> schema, likely once there's an ordering flow), this menu is where that
+> would surface — but that's a separate, larger project, not an extension of
+> this one.
+
 > **Travel-time filter uses real routes, not straight-line distance.**
 > `FilterSheet`'s "Travel time" section (Walking/Cycling/Driving — walking
 > and cycling visually promoted with a green accent tint even when inactive,
@@ -441,7 +456,7 @@ Added in migration `20260716090000_restaurant_events`.
 
 | Route | File | What it is |
 | --- | --- | --- |
-| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`) plus a **travel-time filter** (see below). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with "Fits your goal" / travel-time tags if applicable. List = restaurant cards, same tags when applicable. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
+| `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved link + a **Settings** cog — see below), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`) plus a **travel-time filter** (see below). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with "Fits your goal" / travel-time tags if applicable. List = restaurant cards, same tags when applicable. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
 | `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Each dish card has a **"+ Compare"** toggle. Bottom nav present. |
 | `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, **action buttons** (Order Online / Directions / Call — see below, only the ones with data show), dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |

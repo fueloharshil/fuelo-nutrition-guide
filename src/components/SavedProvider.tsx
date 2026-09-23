@@ -6,7 +6,8 @@ type Ctx = {
   isSaved: (id: string) => boolean;
 };
 const SavedCtx = createContext<Ctx | null>(null);
-const KEY = "fuelo:saved";
+export const SAVED_KEY = "fuelo:saved";
+const KEY = SAVED_KEY;
 
 export function SavedProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<string[]>([]);

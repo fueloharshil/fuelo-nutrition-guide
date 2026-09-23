@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, User, SlidersHorizontal, Target, ChevronRight, Footprints, Bike, Car } from "lucide-react";
+import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, Settings, SlidersHorizontal, Target, ChevronRight, Footprints, Bike, Car, Trash2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
@@ -23,8 +23,18 @@ import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
 import { BottomNav } from "@/components/BottomNav";
-import { useProfile } from "@/components/ProfileProvider";
+import { useProfile, PROFILE_KEY } from "@/components/ProfileProvider";
 import { dishFitsGoal } from "@/lib/profile";
+import { SAVED_KEY } from "@/components/SavedProvider";
+import { WAITLIST_DISMISS_KEY, WAITLIST_DONE_KEY } from "@/components/WaitlistBanner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const DiscoverMap = lazy(() => import("@/components/DiscoverMap"));
 import { WaitlistBanner } from "@/components/WaitlistBanner";
@@ -371,15 +381,15 @@ function Discover() {
 function Header() {
   return (
     <header className="px-4 pt-6 pb-1 sm:px-6 flex items-start justify-between gap-3">
-      <Link to="/" className="flex flex-col min-w-0">
+      <Link to="/" className="flex flex-col items-start min-w-0">
         <img
           src="/fuelo-wordmark.svg"
           alt="Fuelo"
-          className="h-14 w-auto"
+          className="h-14 w-auto -ml-1.5"
           width={178}
           height={70}
         />
-        <span className="mt-1 text-[11px] uppercase tracking-widest text-muted-foreground">
+        <span className="mt-2.5 text-[11px] uppercase tracking-widest text-muted-foreground">
           Discover More, Digest Smarter.
         </span>
       </Link>
@@ -391,15 +401,68 @@ function Header() {
           <Bookmark className="h-4 w-4" />
           <span className="hidden sm:inline">Saved</span>
         </Link>
-        <Link
-          to="/profile"
-          aria-label="Your profile"
-          className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-secondary hover:bg-accent transition"
-        >
-          <User className="h-4 w-4" />
-        </Link>
+        <SettingsMenu />
       </div>
     </header>
+  );
+}
+
+// Fuelo has no consumer accounts (see ProfileProvider — goal/dietary
+// preference and Saved are local-only, no sign-up/login). This is a
+// lightweight settings menu over what actually exists today, not an
+// account menu: edit your local profile, and a "Clear my data" reset as
+// the closest local equivalent to "sign out" — there's nothing to log out
+// of. Revisit if/when Fuelo gets real accounts (e.g. once there's an
+// ordering flow that needs saved addresses).
+function SettingsMenu() {
+  function clearLocalData() {
+    if (typeof window === "undefined") return;
+    const confirmed = window.confirm(
+      "Clear your saved goal, dietary preference, and saved restaurants from this device? This can't be undone.",
+    );
+    if (!confirmed) return;
+    localStorage.removeItem(PROFILE_KEY);
+    localStorage.removeItem(SAVED_KEY);
+    localStorage.removeItem(WAITLIST_DISMISS_KEY);
+    localStorage.removeItem(WAITLIST_DONE_KEY);
+    window.location.reload();
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-label="Settings"
+          className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-secondary hover:bg-accent transition"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel>Settings</DropdownMenuLabel>
+        <DropdownMenuItem asChild>
+          <Link to="/profile" className="cursor-pointer">
+            <Target className="h-4 w-4" /> Edit goal &amp; diet
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/saved" className="cursor-pointer">
+            <Bookmark className="h-4 w-4" /> Saved restaurants
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={clearLocalData}
+          className="cursor-pointer text-destructive focus:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" /> Clear my data
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          No account needed — everything above is saved on this device only.
+        </p>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

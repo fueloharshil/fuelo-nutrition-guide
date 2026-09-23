@@ -7,7 +7,7 @@ import {
   type Profile,
 } from "@/lib/profile";
 
-const PROFILE_KEY = "fuelo:profile";
+export const PROFILE_KEY = "fuelo:profile";
 
 type Ctx = {
   profile: Profile;

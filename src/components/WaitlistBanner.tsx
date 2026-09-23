@@ -3,8 +3,10 @@ import { X, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DISMISS_KEY = "fuelo.waitlist.dismissed";
-const DONE_KEY = "fuelo.waitlist.done";
+export const WAITLIST_DISMISS_KEY = "fuelo.waitlist.dismissed";
+export const WAITLIST_DONE_KEY = "fuelo.waitlist.done";
+const DISMISS_KEY = WAITLIST_DISMISS_KEY;
+const DONE_KEY = WAITLIST_DONE_KEY;
 
 export function WaitlistBanner() {
   const [visible, setVisible] = useState(false);
