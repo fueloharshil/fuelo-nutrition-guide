@@ -301,13 +301,19 @@ function Discover() {
       {!hasGoal && (
         <Link
           to="/profile"
-          className="mx-4 sm:mx-6 mt-3 flex items-center justify-between gap-3 rounded-2xl bg-card px-4 py-3 shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-float)]"
+          className="mx-4 sm:mx-6 mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3.5 shadow-[var(--shadow-card)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-float)]"
+          style={{
+            background:
+              "linear-gradient(135deg, oklch(0.94 0.06 148 / 0.9) 0%, oklch(0.9 0.07 140 / 0.9) 100%)",
+          }}
         >
-          <span className="inline-flex items-center gap-2 text-sm font-medium">
-            <Target className="h-4 w-4 flex-none text-primary" />
+          <span className="inline-flex items-center gap-3 text-sm font-semibold text-accent-foreground">
+            <span className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[var(--shadow-card)]">
+              <Target className="h-4 w-4" />
+            </span>
             Set a goal to see dishes that fit it
           </span>
-          <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+          <ChevronRight className="h-4 w-4 flex-none text-accent-foreground/70" />
         </Link>
       )}
 
@@ -414,28 +420,31 @@ function Discover() {
 
 function Header() {
   return (
-    <header className="px-4 pt-6 pb-1 sm:px-6 flex items-start justify-between gap-3">
-      <Link to="/" className="flex flex-col items-start min-w-0">
-        <img
-          src="/fuelo-wordmark.svg"
-          alt="Fuelo"
-          className="h-14 w-auto -ml-1.5"
-          width={178}
-          height={70}
-        />
-        <span className="mt-2.5 text-[11px] uppercase tracking-widest text-muted-foreground">
-          Discover More, Digest Smarter.
-        </span>
-      </Link>
-      <div className="flex items-center gap-2 flex-none">
-        <Link
-          to="/saved"
-          className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-accent transition"
-        >
-          <Bookmark className="h-4 w-4" />
-          <span className="hidden sm:inline">Saved</span>
+    <header className="relative overflow-hidden px-4 pt-6 pb-5 sm:px-6">
+      <div className="hero-wash" aria-hidden />
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        <Link to="/" className="flex flex-col items-start min-w-0">
+          <img
+            src="/fuelo-wordmark.svg"
+            alt="Fuelo"
+            className="h-14 w-auto -ml-1.5"
+            width={178}
+            height={70}
+          />
+          <span className="mt-2.5 text-[11px] uppercase tracking-widest text-muted-foreground">
+            Discover More, Digest Smarter.
+          </span>
         </Link>
-        <SettingsMenu />
+        <div className="flex items-center gap-2 flex-none">
+          <Link
+            to="/saved"
+            className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-sm font-medium hover:bg-accent transition"
+          >
+            <Bookmark className="h-4 w-4" />
+            <span className="hidden sm:inline">Saved</span>
+          </Link>
+          <SettingsMenu />
+        </div>
       </div>
     </header>
   );
@@ -578,7 +587,7 @@ function TrendingRow({
   return (
     <section className="px-4 sm:px-6 pt-3">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
+        <h2 className="font-display text-[11px] uppercase tracking-widest text-muted-foreground font-bold">
           Trending near you
         </h2>
         {active && (
@@ -627,7 +636,7 @@ function CuisineTile({
     <button
       onClick={onSelect}
       aria-pressed={active}
-      className={`group relative flex h-[112px] w-[144px] flex-col justify-end overflow-hidden rounded-2xl text-left shadow-[var(--shadow-card)] transition-shadow duration-200 hover:shadow-[var(--shadow-float)] ${
+      className={`group relative flex h-[112px] w-[144px] flex-col justify-end overflow-hidden rounded-2xl text-left shadow-[var(--shadow-card)] transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-float)] active:translate-y-0 active:scale-[0.98] ${
         active ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
       }`}
     >
@@ -654,7 +663,7 @@ function CuisineTile({
       <span className="absolute left-3 top-3 z-10 text-lg leading-none drop-shadow" aria-hidden>
         {cuisineEmoji(cuisine)}
       </span>
-      <span className="relative z-10 px-3 pb-3 text-sm font-bold leading-tight tracking-tight text-white drop-shadow-sm">
+      <span className="font-display relative z-10 px-3 pb-3 text-sm font-bold leading-tight tracking-tight text-white drop-shadow-sm">
         {cuisine}
       </span>
     </button>
@@ -718,9 +727,9 @@ function FilterButton({ count, onClick }: { count: number; onClick: () => void }
     <button
       onClick={onClick}
       aria-label="Filters"
-      className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition active:scale-[0.98] ${
+      className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition duration-200 active:scale-[0.98] ${
         active
-          ? "bg-primary text-primary-foreground"
+          ? "bg-primary text-primary-foreground shadow-[var(--shadow-card)]"
           : "bg-secondary text-secondary-foreground hover:bg-accent"
       }`}
     >
@@ -804,11 +813,11 @@ function RestaurantCard({
     <Link
       to="/restaurants/$id"
       params={{ id: restaurant.id }}
-      className="block bg-card rounded-2xl p-4 shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-float)] transition active:scale-[0.99]"
+      className="block bg-card rounded-2xl p-4 shadow-[var(--shadow-card)] transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-float)] active:translate-y-0 active:scale-[0.99]"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-lg font-bold tracking-tight truncate">{restaurant.name}</h3>
+          <h3 className="font-display text-lg font-bold tracking-tight truncate">{restaurant.name}</h3>
           <p className="text-sm text-muted-foreground mt-0.5">{restaurant.cuisine}</p>
           <p className="mt-1 text-xs text-muted-foreground inline-flex items-center gap-1">
             <MapPin className="h-3 w-3" /> {restaurant.area}
@@ -880,7 +889,7 @@ function RestaurantPreview({
       >
         <X className="h-4 w-4" />
       </button>
-      <h3 className="text-lg font-bold tracking-tight pr-8">{restaurant.name}</h3>
+      <h3 className="font-display text-lg font-bold tracking-tight pr-8">{restaurant.name}</h3>
       <p className="text-sm text-muted-foreground">{restaurant.cuisine}</p>
       <p className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
         <MapPin className="h-3 w-3" /> {restaurant.area}

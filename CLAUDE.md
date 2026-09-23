@@ -565,10 +565,30 @@ CSS variables and Tailwind semantic classes (`bg-background`, `text-primary`,
 
 **Typography:**
 
-- **Inter** (`--font-sans` / `--font-display`), loaded from Google Fonts in
-  `__root.tsx`. Headings are bold/extrabold with tight tracking
-  (`-0.02em`). Small uppercase labels use `text-[11px] uppercase tracking-widest
+- **Inter** for body text (`--font-sans`), **Poppins** for headings/section
+  titles (`--font-display` — restaurant names, "Trending near you", cuisine
+  tile labels; apply via the `font-display` Tailwind utility). Both loaded
+  from Google Fonts in `__root.tsx` (one `<link>`, multiple `&family=`
+  params). Headings are bold/extrabold with tight tracking (`-0.02em`).
+  Small uppercase labels use `text-[11px] uppercase tracking-widest
   text-muted-foreground`.
+
+**Depth & motion (Discover polish pass):**
+
+- `--shadow-card`/`--shadow-float` are two-layer warm-tinted shadows (amber +
+  green oklch, never pure grey) so cards/buttons genuinely lift off the cream
+  background rather than just outlining it.
+- `.hero-wash` (`styles.css`) is Discover's header backdrop — an absolutely
+  positioned, `pointer-events: none` warm green/amber gradient behind the
+  logo/tagline, fading into `var(--color-background)`. The header is `relative`
+  with its real content wrapped `relative z-10` above it.
+- Trending tiles and restaurant cards lift slightly on hover/tap
+  (`hover:-translate-y-0.5` + `hover:shadow-[var(--shadow-float)]`, settling
+  back via `active:scale-[0.98]`/`active:translate-y-0`) — a deliberately
+  subtle micro-interaction, not a bounce.
+- The "Set a goal" banner uses a soft green gradient fill with a circular
+  primary-green icon badge, so it reads as an inviting feature rather than a
+  plain form row.
 
 **Map styling (Mapbox GL, in `styles.css`):**
 
