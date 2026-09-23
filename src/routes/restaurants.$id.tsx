@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +23,7 @@ import { toCompareItem } from "@/lib/compare";
 import { ShareButton } from "@/components/ShareButton";
 import type { ShareCardInput } from "@/lib/shareCard";
 import { logProfileView, logMenuItemView } from "@/lib/analytics";
+import { buildDirectionsUrl } from "@/lib/directions";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -172,6 +173,8 @@ function RestaurantPage() {
         </div>
       </header>
 
+      <RestaurantActionButtons restaurant={r} />
+
       {filtersOn && (
         <div className="px-4 sm:px-6 mt-6">
           <div className="flex w-full items-start gap-2 rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm">
@@ -247,6 +250,52 @@ function RestaurantPage() {
         allergens.
       </p>
     </main>
+  );
+}
+
+function RestaurantActionButtons({ restaurant: r }: { restaurant: Restaurant }) {
+  const hasDirections = r.latitude != null && r.longitude != null;
+  const hasPhone = !!r.phone;
+  const hasOrderLink = !!r.external_order_url;
+  if (!hasDirections && !hasPhone && !hasOrderLink) return null;
+
+  const buttonClass =
+    "inline-flex h-11 flex-1 min-w-[130px] items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition active:scale-[0.98]";
+
+  return (
+    <div className="px-4 sm:px-6 mt-4 flex flex-wrap gap-2">
+      {hasOrderLink && (
+        <a
+          href={r.external_order_url!}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${buttonClass} bg-primary text-primary-foreground hover:opacity-95`}
+        >
+          <ShoppingBag className="h-4 w-4" /> Order Online
+        </a>
+      )}
+      {hasDirections && (
+        <button
+          type="button"
+          onClick={() => {
+            const url = buildDirectionsUrl(r.latitude!, r.longitude!, r.name);
+            window.open(url, "_blank", "noopener,noreferrer");
+          }}
+          className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
+        >
+          <Navigation className="h-4 w-4" /> Directions
+        </button>
+      )}
+      {hasPhone && (
+        <a
+          href={`tel:${r.phone!.replace(/[^0-9+]/g, "")}`}
+          aria-label={`Call ${r.name}`}
+          className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
+        >
+          <Phone className="h-4 w-4" /> Call
+        </a>
+      )}
+    </div>
   );
 }
 

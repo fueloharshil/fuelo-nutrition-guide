@@ -14,6 +14,7 @@ import {
   TrendingUp,
   TrendingDown,
   X,
+  ShoppingBag,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -260,6 +261,12 @@ function OwnerDashboard({ email }: { email: string }) {
 
       <AnalyticsSection restaurantId={data.restaurant.id} items={data.items} />
 
+      <OrderLinkCard
+        restaurantId={data.restaurant.id}
+        value={data.restaurant.external_order_url ?? null}
+        onSaved={refresh}
+      />
+
       <div className="mt-6 space-y-8">
         {grouped.map(([category, items]) => (
           <section key={category ?? "menu"}>
@@ -465,6 +472,75 @@ function TrendBadge({ trend }: { trend: Trend }) {
     >
       <Icon className="h-3 w-3" /> {Math.abs(trend.pct ?? 0)}%
     </span>
+  );
+}
+
+// Lets the owner set where the restaurant page's "Order Online" button
+// points. Column-level grant on restaurants(phone, external_order_url) — see
+// migration 20260717090000_restaurant_contact_fields — so this update can
+// only ever touch this one field on the owner's own restaurant row.
+function OrderLinkCard({
+  restaurantId,
+  value,
+  onSaved,
+}: {
+  restaurantId: string;
+  value: string | null;
+  onSaved: () => void;
+}) {
+  const [url, setUrl] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setMsg(null);
+    setSaving(true);
+    const trimmed = url.trim();
+    const { error } = await dbPending
+      .from("restaurants")
+      .update({ external_order_url: trimmed || null })
+      .eq("id", restaurantId);
+    setSaving(false);
+    if (error) {
+      setErr(error.message || "Couldn't save. Try again.");
+      return;
+    }
+    setMsg("Saved.");
+    onSaved();
+  }
+
+  return (
+    <div className="mt-6 rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
+      <h2 className="inline-flex items-center gap-1.5 text-base font-bold tracking-tight">
+        <ShoppingBag className="h-4 w-4 text-primary" /> Order online link
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Optional — add a link to wherever you'd like customers to order from (your website,
+        Deliveroo, Uber Eats, Just Eat, etc.)
+      </p>
+      <form onSubmit={save} className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…"
+          className="h-12 flex-1 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+        />
+        <button
+          type="submit"
+          disabled={saving}
+          className="inline-flex h-12 flex-none items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:opacity-60"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Save
+        </button>
+      </form>
+      {msg && <p className="mt-2 text-xs font-medium text-primary">{msg}</p>}
+      {err && <p className="mt-2 text-xs text-destructive">{err}</p>}
+    </div>
   );
 }
 

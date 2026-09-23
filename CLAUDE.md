@@ -111,6 +111,7 @@ GitHub.
 │   │   ├── shareCard.ts           # Canvas 2D renderer for the shareable dish image (1080×1350 PNG)
 │   │   ├── share.ts               # buildDishShareUrl(), Web Share/Clipboard feature detection
 │   │   ├── analytics.ts           # Fire-and-forget event loggers + fetchRestaurantAnalytics() for /verify
+│   │   ├── directions.ts          # buildDirectionsUrl(): Apple Maps vs Google Maps by device
 │   │   ├── utils.ts               # cn() etc.
 │   │   └── (lovable error reporting / error-capture / error-page helpers)
 │   ├── hooks/use-mobile.tsx
@@ -160,9 +161,22 @@ tables are insert-only for the public.
 | `longitude` | double precision | nullable (map pin) |
 | `image_url` | text | nullable |
 | `verified` | boolean | NOT NULL default `false` → "Verified Nutrition" |
+| `phone` | text | nullable → restaurant page "Call" button (`tel:`), hidden if null. Added in migration `20260717090000_restaurant_contact_fields`; no owner-facing edit UI yet, populate via the admin/table editor. |
+| `external_order_url` | text | nullable → restaurant page "Order Online" button, hidden if null. Owner-editable from `/verify` (see below). Added in the same migration. |
 | `created_at` | timestamptz | default `now()` |
 
-RLS: **public SELECT** (`anon`, `authenticated`). `service_role` full access.
+RLS: **public SELECT** (`anon`, `authenticated`); the linked owner may **UPDATE**
+just `phone`/`external_order_url` on their own restaurant (column-level grant,
+same `restaurant_owners` pattern as `menu_items`, see below). `service_role`
+full access.
+
+> **Restaurant action buttons** (`RestaurantActionButtons` in
+> `restaurants.$id.tsx`) — Order Online / Directions / Call, each rendered
+> only when its data exists (no dead buttons). "Get Directions" needs no new
+> column: `buildDirectionsUrl()` (`src/lib/directions.ts`) picks Apple Maps
+> vs Google Maps by sniffing `navigator.userAgent` for iOS/macOS, and is only
+> ever called from a click handler (never rendered as a static SSR'd `href`)
+> since that detection only makes sense client-side.
 
 ### `menus`  — a restaurant's menu(s)  _(not in the original brief, but exists)_
 
@@ -274,7 +288,8 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 > link** (`supabase.auth.signInWithOtp`). Claim card → inserts a lead + shows
 > "check your email"; admin (`/admin`) links an owner email → restaurant;
 > owner (`/verify`) logs in and verifies each dish (Looks right / Adjust / Not
-> on our menu). Owner writes are gated by the menu_items UPDATE policy above.
+> on our menu), and optionally sets an order-online link. Owner writes are
+> gated by the menu_items and restaurants UPDATE policies above.
 > The generated `types.ts` won't know `restaurant_owners`/`is_active` until the
 > migration is applied + regenerated, so those calls go through
 > `src/lib/supabasePending.ts` (a documented typed escape hatch — remove once
@@ -405,7 +420,7 @@ Added in migration `20260716090000_restaurant_events`.
 | --- | --- | --- |
 | `/` | `routes/index.tsx` | **Discover** — the home screen. Header (Fuelo ring wordmark logo + "Discover More, Digest Smarter." tagline, Saved + profile links), waitlist banner, a one-line "Set a goal to see dishes that fit it" prompt linking to `/profile` (shown only until a goal is set), "Trending near you" cuisine tiles (verified food photos w/ gradient overlay, falls back to green gradient), search bar (restaurants **and** dishes), **Map/List toggle**, dish-level **filters** (calories/protein/dietary/cuisine, via `FiltersProvider` + `FilterSheet`). Map = Mapbox GL with **Fuelo Ring pin mark** (green ring + center dot, white halo when active) + badges (Verified/New/Top Rated) + live geolocation; tapping a pin shows a bottom preview card → "View menu", with a "Fits your goal" tag if applicable. List = restaurant cards, same "Fits your goal" tag when a goal is set and the restaurant has a qualifying dish. Footer disclaimer that nutrition is AI-estimated. Bottom nav present. |
 | `/feed` | `routes/feed.tsx` | **Feed** — "Trending near you" (restaurant cards), "Newly verified" (dishes with a restaurant-verified item, empty state if none), "High protein picks nearby" (dishes sorted verified-first then by protein-to-calorie ratio descending). Each dish card has a **"+ Compare"** toggle. Bottom nav present. |
-| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
+| `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, **action buttons** (Order Online / Directions / Call — see below, only the ones with data show), dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
 | `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |

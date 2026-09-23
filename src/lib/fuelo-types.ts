@@ -9,6 +9,8 @@ export type Restaurant = {
   longitude: number | null;
   image_url: string | null;
   verified: boolean;
+  phone?: string | null;
+  external_order_url?: string | null;
   created_at?: string;
 };
 
