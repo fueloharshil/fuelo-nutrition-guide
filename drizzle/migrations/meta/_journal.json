@@ -15,6 +15,13 @@
       "when": 1790240992454,
       "tag": "0001_restaurant_booking_url",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790242409734,
+      "tag": "0002_action_click_event_and_admin_restaurants",
+      "breakpoints": true
     }
   ]
 }
