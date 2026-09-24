@@ -11,6 +11,7 @@ export type Restaurant = {
   verified: boolean;
   phone?: string | null;
   external_order_url?: string | null;
+  booking_url?: string | null;
   created_at?: string;
 };
 
@@ -36,8 +37,27 @@ export type MenuItem = {
   source: string | null;
   is_verified: boolean;
   is_active?: boolean;
+  cooking_fat?: CookingFat | null;
+  ingredients_detail?: IngredientDetail[] | null;
   created_at?: string;
 };
+
+// How much oil/fat a dish uses — an owner-set tag, not a computed value (see
+// migration 20260924150000_menu_item_cooking_detail). Deliberately coarse:
+// most independent kitchens can name this but can't quantify oil in grams.
+export type CookingFat = "dry" | "light" | "generous";
+
+export const COOKING_FAT_LABEL: Record<CookingFat, string> = {
+  dry: "Dry / grilled",
+  light: "Light oil",
+  generous: "Generous oil / fried",
+};
+
+// A single structured ingredient row (name + optional freeform amount, e.g.
+// "150g" or "to taste"). Stored as menu_items.ingredients_detail (jsonb);
+// the Adjust editor also derives a human-readable join into `description`
+// on save so existing readers of that field need no changes.
+export type IngredientDetail = { name: string; amount: string };
 
 export type RestaurantOwner = {
   id: string;

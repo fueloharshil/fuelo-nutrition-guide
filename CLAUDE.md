@@ -20,8 +20,26 @@ GitHub.
   can lose their project history. (See `AGENTS.md`.)
 - Keep `main` in a working state — every push is reflected live in the editor.
 - Remote: `https://github.com/fueloharshil/fuelo-nutrition-guide.git`, branch `main`.
-
----
+- **A `.sql` file committed to `supabase/migrations/` does NOT get applied to
+  the live database by a git push.** Confirmed the hard way (2026-09-24):
+  `cuisines`, `menu_categories`, `restaurant_events`, and the contact-fields
+  columns all sat committed for weeks with the live schema never actually
+  changed (checked directly via a REST call to Supabase, bypassing this
+  app's own graceful-degradation fallbacks, which is exactly what made it
+  invisible — features just quietly showed their "not live yet" empty
+  states). **Claude Code has no database credentials in this project**
+  (`.env` only has the public/anon key, by design) and cannot apply a
+  migration itself. What actually works: open the Lovable project at
+  lovable.dev and ask Lovable's own assistant to run the migration SQL
+  against the connected database — that's how `restaurant_owners`/
+  `is_active` ended up live in the first place (see the duplicate,
+  hash-named migration file `20260715093022_5a99ed7f-....sql`, which is
+  Lovable's own record of actually executing it, sitting alongside the
+  hand-authored file with the same content that never ran). **After writing
+  any new migration file, tell the user it still needs to be applied via
+  Lovable's assistant — do not assume it's live**, and treat "does the
+  table/column exist" as an empirical question (query the live REST API)
+  rather than "is the migration file merged."
 
 ## Tech stack
 
@@ -172,20 +190,35 @@ tables are insert-only for the public.
 | `verified` | boolean | NOT NULL default `false` → "Verified Nutrition" |
 | `phone` | text | nullable → restaurant page "Call" button (`tel:`), hidden if null. Added in migration `20260717090000_restaurant_contact_fields`; no owner-facing edit UI yet, populate via the admin/table editor. |
 | `external_order_url` | text | nullable → restaurant page "Order Online" button, hidden if null. Owner-editable from `/verify` (see below). Added in the same migration. |
+| `booking_url` | text | nullable → restaurant page "Book a Table" button, hidden if null. Owner-editable from `/verify`, same pattern as `external_order_url`. Added in migration `20260924160500_restaurant_booking_url`. |
 | `created_at` | timestamptz | default `now()` |
 
 RLS: **public SELECT** (`anon`, `authenticated`); the linked owner may **UPDATE**
-just `phone`/`external_order_url` on their own restaurant (column-level grant,
-same `restaurant_owners` pattern as `menu_items`, see below). `service_role`
-full access.
+just `phone`/`external_order_url`/`booking_url` on their own restaurant
+(column-level grant, same `restaurant_owners` pattern as `menu_items`, see
+below). `service_role` full access.
 
 > **Restaurant action buttons** (`RestaurantActionButtons` in
-> `restaurants.$id.tsx`) — Order Online / Directions / Call, each rendered
-> only when its data exists (no dead buttons). "Get Directions" needs no new
-> column: `buildDirectionsUrl()` (`src/lib/directions.ts`) picks Apple Maps
-> vs Google Maps by sniffing `navigator.userAgent` for iOS/macOS, and is only
-> ever called from a click handler (never rendered as a static SSR'd `href`)
-> since that detection only makes sense client-side.
+> `restaurants.$id.tsx`) — Order Online / Book a Table / Directions / Call,
+> each rendered only when its data exists (no dead buttons). "Get
+> Directions" needs no new column: `buildDirectionsUrl()`
+> (`src/lib/directions.ts`) picks Apple Maps vs Google Maps by sniffing
+> `navigator.userAgent` for iOS/macOS, and is only ever called from a click
+> handler (never rendered as a static SSR'd `href`) since that detection
+> only makes sense client-side. A "skip the delivery commission" line above
+> the buttons shows whenever an order link or phone number exists —
+> deliberately **not** gated by walking distance (an earlier version wrongly
+> coupled the two; ordering direct saves the same commission whether you're
+> nearby or across town — see the walk-badge note further down). Book a
+> Table gets no such copy — it's about covers, not commission.
+>
+> **Owner-editable link fields** (`/verify`'s `LinkCard`, used for both
+> `external_order_url` and `booking_url`) accept a bare domain like
+> `deliveroo.co.uk/menu/x` — the input is `type="text"`, not `type="url"`,
+> specifically so the browser's native URL validation (which demands a
+> `https://` prefix before it'll even let the form submit) never blocks an
+> owner typing what feels natural. `LinkCard`'s own `save()` prepends
+> `https://` if the value doesn't already have a scheme.
 
 ### `menus`  — a restaurant's menu(s)  _(not in the original brief, but exists)_
 
@@ -220,12 +253,45 @@ RLS: **public SELECT**. Indexed on `restaurant_id`.
 | `source` | text | default `'AI estimated'` |
 | `is_verified` | boolean | NOT NULL default `false` → drives the "Verified" badge/ring |
 | `is_active` | boolean | NOT NULL default `true` — owner soft-hide (`false` = removed from public menu, not deleted). Added in migration `20260714200000_restaurant_owners_and_verify`. |
+| `cooking_fat` | text | nullable, CHECK in (`dry`, `light`, `generous`) — owner-set tag for how much oil/fat a dish uses. Added in migration `20260924150000_menu_item_cooking_detail`. |
+| `ingredients_detail` | jsonb | nullable — structured `{name, amount}[]` rows. Same migration. |
 | `created_at` | timestamptz | default `now()` |
 
 RLS: **public SELECT**; **UPDATE** allowed to an authenticated owner for their
 own restaurant's dishes (via `restaurant_owners`). Indexed on `restaurant_id` and `menu_id`.
 Nutrition ranges render via `formatRange()` in `src/lib/fuelo-types.ts` (shows
-`min–max`, `~x` if only one bound, single value if equal).
+`min–max`, `~x` if only one bound, single value if equal). `ConfidenceRing`'s
+tooltip explicitly defends why estimates are shown as a range rather than a
+single number ("recipes vary — e.g. how much oil is used").
+
+> **Ingredient accuracy: cooking fat over gram-level itemization, on
+> purpose.** The instinct was "let owners specify ingredient quantities
+> (e.g. 150g hummus) so estimates get more accurate" — rejected as the
+> primary lever, because oil/fat is the one ingredient almost no independent
+> kitchen actually measures, so gram-precision there would be false
+> precision on the least-known number, not real accuracy. Instead,
+> `/verify`'s `AdjustEditor` (in `verify.tsx`) has:
+> - **Structured ingredients** — name + *optional* amount per row (not
+>   forced), replacing the old single freeform textarea.
+>   `initialIngredientRows()` falls back to splitting the legacy
+>   `description` by comma (no amounts) the first time a pre-upgrade dish is
+>   adjusted; `ingredients_detail` is the source of truth after that. On
+>   save, a human-readable join is *also* written to `description` (e.g.
+>   "Hummus (150g), handmade pitta, …") so every existing reader of that
+>   field (public menu, ShareSheet) needs no changes.
+> - **Cooking fat tag** — Dry/grilled · Light oil · Generous oil/fried,
+>   `COOKING_FAT_LABEL` in `src/lib/fuelo-types.ts`. Click a selected option
+>   again to clear it. Shown to the owner (verify list + editor) and
+>   publicly on the dish card (`restaurants.$id.tsx`) as a small transparent
+>   tag — a real signal for diners, not just internal metadata.
+> - **Note: none of this recomputes the stored calorie/macro numbers.**
+>   Nothing in the codebase calls an AI/nutrition API — every "AI Estimated"
+>   range is static seed data, and `/verify`'s ranges are a manual owner
+>   override, not a live recalculation. Structured ingredients are the
+>   *foundation* for a future AI-assisted recompute step, not that step
+>   itself — building the actual recompute (provider choice, cost per call,
+>   an owner review/confirm step before it overwrites a range) is a
+>   deliberately separate, not-yet-scoped project.
 
 ### `user_waitlist`  — email capture (consumer waitlist)
 
@@ -460,11 +526,10 @@ Added in migration `20260716090000_restaurant_events`.
 > live: a restaurant 2 min from Dalston shows the badge, the same restaurant
 > from Croydon doesn't, on both surfaces.
 > - **Restaurant page** (`RestaurantActionButtons` in `restaurants.$id.tsx`):
->   shown above the action buttons; if `external_order_url` is also set, adds
->   "— order direct and skip the delivery commission" — the actual point of
->   showing this at all: nudge someone who'd default to Deliveroo/Uber Eats
->   toward collecting in person and ordering direct instead, when it's
->   genuinely walkable.
+>   shown above the action buttons as its own line — the "skip the delivery
+>   commission" copy is a *separate* line shown whenever an order link or
+>   phone number exists, not gated on this badge (see the restaurants table
+>   note above); the two used to be wrongly coupled.
 > - **Map-pin preview card** (`RestaurantPreview` in `index.tsx`): shown
 >   as a `TravelTag` alongside "Fits your goal", independent of whether
 >   Discover's travel-time filter is on — tapping a pin should say "3 min

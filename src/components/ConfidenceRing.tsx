@@ -31,7 +31,7 @@ export function ConfidenceRing({ confidence, verified, size = 20 }: Props) {
   const label = bandLabel(verified, confidence);
   const tooltip = verified
     ? "Confirmed by the restaurant."
-    : "AI estimate from the menu description. The calorie and macro range shows the likely spread — it gets tighter once the restaurant verifies.";
+    : "AI estimate from the menu description. Shown as a range on purpose — recipes vary (e.g. how much oil is used) — and it gets tighter once the restaurant verifies.";
 
   return (
     <span

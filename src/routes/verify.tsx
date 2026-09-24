@@ -15,12 +15,13 @@ import {
   TrendingDown,
   X,
   ShoppingBag,
+  CalendarCheck,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { dbPending } from "@/lib/supabasePending";
-import type { MenuItem, Restaurant, RestaurantOwner } from "@/lib/fuelo-types";
-import { formatRange } from "@/lib/fuelo-types";
+import type { MenuItem, Restaurant, RestaurantOwner, CookingFat, IngredientDetail } from "@/lib/fuelo-types";
+import { formatRange, COOKING_FAT_LABEL } from "@/lib/fuelo-types";
 import { groupByCategory, type CategoryTypeMap } from "@/lib/menuGrouping";
 import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 import { useOwnerAuth } from "@/hooks/useOwnerAuth";
@@ -264,9 +265,25 @@ function OwnerDashboard({ email }: { email: string }) {
 
       <AnalyticsSection restaurantId={data.restaurant.id} items={data.items} />
 
-      <OrderLinkCard
+      <LinkCard
         restaurantId={data.restaurant.id}
+        field="external_order_url"
         value={data.restaurant.external_order_url ?? null}
+        icon={<ShoppingBag className="h-4 w-4 text-primary" />}
+        title="Order online link"
+        description="Optional — add a link to wherever you'd like customers to order from (your website, Deliveroo, Uber Eats, Just Eat, etc.)"
+        placeholder="e.g. deliveroo.co.uk/menu/your-restaurant"
+        onSaved={refresh}
+      />
+
+      <LinkCard
+        restaurantId={data.restaurant.id}
+        field="booking_url"
+        value={data.restaurant.booking_url ?? null}
+        icon={<CalendarCheck className="h-4 w-4 text-primary" />}
+        title="Book a table link"
+        description="Optional — add a link to wherever customers can reserve a table (OpenTable, SevenRooms, Resy, or your own site)."
+        placeholder="e.g. opentable.co.uk/your-restaurant"
         onSaved={refresh}
       />
 
@@ -496,17 +513,29 @@ function TrendBadge({ trend }: { trend: Trend }) {
   );
 }
 
-// Lets the owner set where the restaurant page's "Order Online" button
-// points. Column-level grant on restaurants(phone, external_order_url) — see
-// migration 20260717090000_restaurant_contact_fields — so this update can
-// only ever touch this one field on the owner's own restaurant row.
-function OrderLinkCard({
+// Lets the owner set one of the restaurant page's link buttons (Order
+// Online / Book a Table). Column-level grant on
+// restaurants(phone, external_order_url, booking_url) — see migrations
+// 20260717090000_restaurant_contact_fields and
+// 20260924160500_restaurant_booking_url — so this update can only ever
+// touch that one field on the owner's own restaurant row.
+function LinkCard({
   restaurantId,
+  field,
   value,
+  icon,
+  title,
+  description,
+  placeholder,
   onSaved,
 }: {
   restaurantId: string;
+  field: "external_order_url" | "booking_url";
   value: string | null;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  placeholder: string;
   onSaved: () => void;
 }) {
   const [url, setUrl] = useState(value ?? "");
@@ -519,10 +548,17 @@ function OrderLinkCard({
     setErr(null);
     setMsg(null);
     setSaving(true);
-    const trimmed = url.trim();
+    let trimmed = url.trim();
+    // Owners naturally type "google.com" or "deliveroo.co.uk/…" without a
+    // scheme — normalize instead of rejecting it, so this never blocks on
+    // something like the browser's native URL validation.
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      trimmed = `https://${trimmed}`;
+    }
+    setUrl(trimmed);
     const { error } = await dbPending
       .from("restaurants")
-      .update({ external_order_url: trimmed || null })
+      .update({ [field]: trimmed || null })
       .eq("id", restaurantId);
     setSaving(false);
     if (error) {
@@ -536,18 +572,16 @@ function OrderLinkCard({
   return (
     <div className="mt-6 rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
       <h2 className="inline-flex items-center gap-1.5 text-base font-bold tracking-tight">
-        <ShoppingBag className="h-4 w-4 text-primary" /> Order online link
+        {icon} {title}
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Optional — add a link to wherever you'd like customers to order from (your website,
-        Deliveroo, Uber Eats, Just Eat, etc.)
-      </p>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       <form onSubmit={save} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <input
-          type="url"
+          type="text"
+          inputMode="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://…"
+          placeholder={placeholder}
           className="h-12 flex-1 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
         />
         <button
@@ -624,10 +658,19 @@ function DishRow({ item, onChanged }: { item: MenuItem; onChanged: () => void })
         {price && <span className="text-sm font-semibold tabular-nums">{price}</span>}
       </div>
 
-      {item.is_verified && (
-        <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
-          <Check className="h-3 w-3" /> Verified
-        </p>
+      {(item.is_verified || item.cooking_fat) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {item.is_verified && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <Check className="h-3 w-3" /> Verified
+            </span>
+          )}
+          {item.cooking_fat && (
+            <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
+              {COOKING_FAT_LABEL[item.cooking_fat]}
+            </span>
+          )}
+        </div>
       )}
 
       {!editing ? (
@@ -697,6 +740,26 @@ function DishRow({ item, onChanged }: { item: MenuItem; onChanged: () => void })
   );
 }
 
+// Falls back to splitting the legacy freeform `description` into rows (no
+// amounts) the first time a dish is adjusted post-upgrade; once saved,
+// ingredients_detail becomes the source of truth and this fallback no
+// longer applies.
+function initialIngredientRows(item: MenuItem): IngredientDetail[] {
+  if (item.ingredients_detail && item.ingredients_detail.length > 0) {
+    return item.ingredients_detail;
+  }
+  if (item.description) {
+    const rows = item.description
+      .split(",")
+      .map((s) => ({ name: s.trim(), amount: "" }))
+      .filter((r) => r.name);
+    if (rows.length > 0) return rows;
+  }
+  return [{ name: "", amount: "" }];
+}
+
+const COOKING_FAT_OPTIONS: CookingFat[] = ["dry", "light", "generous"];
+
 function AdjustEditor({
   item,
   saving,
@@ -708,7 +771,8 @@ function AdjustEditor({
   onCancel: () => void;
   onSave: (patch: Partial<MenuItem>) => void;
 }) {
-  const [description, setDescription] = useState(item.description ?? "");
+  const [ingredients, setIngredients] = useState<IngredientDetail[]>(() => initialIngredientRows(item));
+  const [cookingFat, setCookingFat] = useState<CookingFat | null>(item.cooking_fat ?? null);
   const [values, setValues] = useState<Record<NutrientField, string>>(() => {
     const initial = {} as Record<NutrientField, string>;
     for (const n of NUTRIENTS) {
@@ -721,6 +785,11 @@ function AdjustEditor({
   const setField = (field: NutrientField, v: string) =>
     setValues((cur) => ({ ...cur, [field]: v }));
 
+  const setIngredient = (i: number, field: "name" | "amount", v: string) =>
+    setIngredients((cur) => cur.map((row, idx) => (idx === i ? { ...row, [field]: v } : row)));
+  const addIngredient = () => setIngredients((cur) => [...cur, { name: "", amount: "" }]);
+  const removeIngredient = (i: number) => setIngredients((cur) => cur.filter((_, idx) => idx !== i));
+
   const toNum = (v: string): number | null => {
     const t = v.trim();
     if (t === "") return null;
@@ -729,7 +798,17 @@ function AdjustEditor({
   };
 
   function save() {
-    const patch: Partial<MenuItem> = { description: description.trim() || null };
+    const cleanIngredients = ingredients
+      .map((r) => ({ name: r.name.trim(), amount: r.amount.trim() }))
+      .filter((r) => r.name);
+    const descriptionJoin = cleanIngredients
+      .map((r) => (r.amount ? `${r.name} (${r.amount})` : r.name))
+      .join(", ");
+    const patch: Partial<MenuItem> = {
+      description: descriptionJoin || null,
+      ingredients_detail: cleanIngredients.length > 0 ? cleanIngredients : null,
+      cooking_fat: cookingFat,
+    };
     for (const n of NUTRIENTS) {
       (patch as Record<string, number | null>)[n.min] = toNum(values[n.min]);
       (patch as Record<string, number | null>)[n.max] = toNum(values[n.max]);
@@ -742,13 +821,77 @@ function AdjustEditor({
       <div className="grid gap-3">
         <div>
           <label className="text-sm font-semibold">Ingredients</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. Hummus, handmade pitta, merguez, fried eggs, olives, dak dak salad"
-            rows={3}
-            className="mt-1 w-full resize-none rounded-xl bg-secondary px-3 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
-          />
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Amount is optional — add it only where you actually know it (e.g. a
+            weighed portion). It's fine to leave it blank.
+          </p>
+          <div className="mt-2 grid gap-1.5">
+            {ingredients.map((row, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <input
+                  value={row.name}
+                  onChange={(e) => setIngredient(i, "name", e.target.value)}
+                  placeholder="e.g. Hummus"
+                  aria-label={`Ingredient ${i + 1} name`}
+                  className="h-11 min-w-0 flex-1 rounded-xl bg-secondary px-3 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+                />
+                <input
+                  value={row.amount}
+                  onChange={(e) => setIngredient(i, "amount", e.target.value)}
+                  placeholder="amount"
+                  aria-label={`Ingredient ${i + 1} amount`}
+                  className="h-11 w-24 flex-none rounded-xl bg-secondary px-2.5 text-center text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeIngredient(i)}
+                  aria-label="Remove ingredient"
+                  className="flex-none rounded-full p-2 text-muted-foreground hover:bg-secondary"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addIngredient}
+            className="mt-2 text-sm font-semibold text-primary underline-offset-2 hover:underline"
+          >
+            + Add ingredient
+          </button>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold">Cooking fat</label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            The single biggest hidden calorie swing — pick the closest, or leave
+            it if you're not sure.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {COOKING_FAT_OPTIONS.map((opt) => (
+              <button
+                type="button"
+                key={opt}
+                onClick={() => setCookingFat((cur) => (cur === opt ? null : opt))}
+                className={`h-9 rounded-full px-3 text-sm font-medium transition ${
+                  cookingFat === opt
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground hover:bg-accent"
+                }`}
+              >
+                {COOKING_FAT_LABEL[opt]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold">Nutrition ranges</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Not sure of the exact number? A range is fine — e.g. recipes vary by
+            how much oil or dressing is used.
+          </p>
         </div>
         {NUTRIENTS.map((n) => (
           <div key={n.label}>

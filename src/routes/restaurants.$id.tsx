@@ -1,12 +1,12 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag, Footprints, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag, Footprints, UtensilsCrossed, BadgePercent, CalendarCheck } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
 import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
-import { formatRange } from "@/lib/fuelo-types";
+import { formatRange, COOKING_FAT_LABEL } from "@/lib/fuelo-types";
 import { NutritionChips } from "@/components/NutritionChips";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceRing } from "@/components/ConfidenceRing";
@@ -276,7 +276,8 @@ function RestaurantActionButtons({
   const hasDirections = r.latitude != null && r.longitude != null;
   const hasPhone = !!r.phone;
   const hasOrderLink = !!r.external_order_url;
-  if (!hasDirections && !hasPhone && !hasOrderLink) return null;
+  const hasBookingLink = !!r.booking_url;
+  if (!hasDirections && !hasPhone && !hasOrderLink && !hasBookingLink) return null;
 
   // walkMinutes is already null unless it's a genuinely nearby walk — see
   // useNearbyWalkTime.
@@ -285,16 +286,30 @@ function RestaurantActionButtons({
   const buttonClass =
     "inline-flex h-11 flex-1 min-w-[130px] items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition active:scale-[0.98]";
 
+  // Commission-saving applies to ANY direct channel (order link or a phone
+  // call) regardless of distance — someone across town who orders via the
+  // restaurant's own site instead of Deliveroo still saves the same cut. The
+  // walk badge is a separate, distance-only fact; the two used to be
+  // wrongly coupled (this line only showed when also nearby).
+  const directChannelCopy = hasOrderLink && hasPhone
+    ? "Order direct online or by phone — skip the delivery commission."
+    : hasOrderLink
+      ? "Order direct on their site — skip the delivery commission."
+      : hasPhone
+        ? "Call to order direct — skip the delivery commission."
+        : null;
+
   return (
     <div className="px-4 sm:px-6 mt-4">
       {isNearby && (
-        <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
+        <p className="mb-1 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
           <Footprints className="h-4 w-4" /> {walkMinutes} min walk
-          {hasOrderLink && (
-            <span className="font-normal text-muted-foreground">
-              — order direct and skip the delivery commission
-            </span>
-          )}
+        </p>
+      )}
+      {directChannelCopy && (
+        <p className="mb-2 flex items-start gap-1.5 text-sm text-muted-foreground">
+          <BadgePercent className="h-4 w-4 flex-none mt-0.5 text-primary" />
+          <span>{directChannelCopy}</span>
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -306,6 +321,16 @@ function RestaurantActionButtons({
             className={`${buttonClass} bg-primary text-primary-foreground hover:opacity-95`}
           >
             <ShoppingBag className="h-4 w-4" /> Order Online
+          </a>
+        )}
+        {hasBookingLink && (
+          <a
+            href={r.booking_url!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${buttonClass} bg-accent text-accent-foreground hover:opacity-90`}
+          >
+            <CalendarCheck className="h-4 w-4" /> Book a Table
           </a>
         )}
         {hasDirections && (
@@ -423,6 +448,11 @@ function DishCard({
             </span>
           ))}
         </div>
+      )}
+      {item.cooking_fat && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {COOKING_FAT_LABEL[item.cooking_fat]}
+        </p>
       )}
       <div className="mt-3 flex items-center justify-between">
         <StatusBadge verified={verified} />
