@@ -1,11 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import { ArrowLeft, MapPin } from "lucide-react";
+import { ArrowLeft, Bookmark, MapPin } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant } from "@/lib/fuelo-types";
 import { useSaved } from "@/components/SavedProvider";
 import { BottomNav } from "@/components/BottomNav";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 const allRestaurantsQuery = queryOptions({
   queryKey: ["restaurants-all"],
@@ -19,7 +21,10 @@ const allRestaurantsQuery = queryOptions({
 export const Route = createFileRoute("/saved")({
   loader: ({ context }) => context.queryClient.ensureQueryData(allRestaurantsQuery),
   component: SavedPage,
-  errorComponent: ({ error }) => <div className="p-8">Couldn't load: {error.message}</div>,
+  errorComponent: ({ reset }) => {
+    const router = useRouter();
+    return <ErrorState onRetry={() => { router.invalidate(); reset(); }} />;
+  },
   notFoundComponent: () => <div className="p-8">Not found.</div>,
 });
 
@@ -44,10 +49,11 @@ function SavedPage() {
       </div>
       <div className="px-4 sm:px-6 mt-6">
         {items.length === 0 ? (
-          <div className="rounded-2xl bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
-            You haven't saved any restaurants yet. Tap the bookmark on a restaurant page to save
-            it here.
-          </div>
+          <EmptyState
+            icon={Bookmark}
+            title="Nothing saved yet"
+            description="Tap the bookmark on a restaurant to add one here."
+          />
         ) : (
           <ul className="grid gap-3">
             {items.map((r) => (

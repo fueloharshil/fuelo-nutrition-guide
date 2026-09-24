@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as SavedRouteImport } from './routes/saved'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as AdminOverviewRouteImport } from './routes/admin-overview'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -31,6 +32,11 @@ const SavedRoute = SavedRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/admin-overview': typeof AdminOverviewRoute
   '/feed': typeof FeedRoute
+  '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
   '/verify': typeof VerifyRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/admin-overview': typeof AdminOverviewRoute
   '/feed': typeof FeedRoute
+  '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
   '/verify': typeof VerifyRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/admin-overview': typeof AdminOverviewRoute
   '/feed': typeof FeedRoute
+  '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/saved': typeof SavedRoute
   '/verify': typeof VerifyRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-overview'
     | '/feed'
+    | '/login'
     | '/profile'
     | '/saved'
     | '/verify'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-overview'
     | '/feed'
+    | '/login'
     | '/profile'
     | '/saved'
     | '/verify'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-overview'
     | '/feed'
+    | '/login'
     | '/profile'
     | '/saved'
     | '/verify'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   AdminOverviewRoute: typeof AdminOverviewRoute
   FeedRoute: typeof FeedRoute
+  LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
   SavedRoute: typeof SavedRoute
   VerifyRoute: typeof VerifyRoute
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   AdminOverviewRoute: AdminOverviewRoute,
   FeedRoute: FeedRoute,
+  LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,
   SavedRoute: SavedRoute,
   VerifyRoute: VerifyRoute,

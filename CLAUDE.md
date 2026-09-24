@@ -92,6 +92,8 @@ GitHub.
 │   │   ├── NutritionChips.tsx     # kcal / P / C / F pills from a menu item
 │   │   ├── ConfidenceRing.tsx     # Ring/label showing estimate confidence or "Verified" tick
 │   │   ├── StatusBadge.tsx        # "Restaurant Verified" vs "AI Estimated" badge
+│   │   ├── EmptyState.tsx         # Shared "nothing here yet" treatment — icon + title + description + optional action
+│   │   ├── ErrorState.tsx         # Shared route-error treatment — icon + message + "Try again" retry button
 │   │   └── ui/                    # shadcn/ui primitives (button, card, dialog, …)
 │   ├── integrations/supabase/
 │   │   ├── client.ts              # Browser Supabase client (lazy Proxy singleton). AUTO-GENERATED
@@ -520,9 +522,21 @@ Added in migration `20260716090000_restaurant_events`.
 | `/restaurants/:id` | `routes/restaurants.$id.tsx` | **Restaurant page** — name, cuisine, area, "Verified Nutrition" badge, Save (bookmark) button, a **"X min walk" badge** when genuinely nearby (see below), **action buttons** (Order Online / Directions / Call — see below, only the ones with data show), dish **sort** (menu order / highest protein / lowest calorie / best protein-to-calorie), dishes grouped by category with `NutritionChips`, dietary tags, `StatusBadge` + `ConfidenceRing`, filter-match highlighting, a "Fits your goal" tag (see Profile below), a **"+ Compare"** toggle (see Compare below), and a **Share** button that generates a shareable dish card (see Share below). Supports `?dish=<id>` deep links (scroll-to + temporary highlight). Ends with the **"Own this restaurant?"** claim card and disclaimer. **No bottom nav** (drill-in page; has its own Back button). |
 | `/saved` | `routes/saved.tsx` | **Saved** — restaurants whose ids are in `localStorage` (`fuelo:saved`). Empty state prompts to bookmark from a restaurant page. Bottom nav present. |
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
-| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit the 8 range fields + verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
+| `/login` | `routes/login.tsx` | **Unified sign-in** — one magic-link form for both restaurant owners and the admin (see below). No bottom nav. |
+| `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit **ingredients** — the `description` field — **and** the 8 nutrition range fields, then verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
 | `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. Links to `/admin-overview`. No bottom nav. |
 | `/admin-overview` | `routes/admin-overview.tsx` | **Admin restaurant overview** — same magic-link/admin gate as `/admin`, a separate internal-only page (not for restaurant owners) listing every restaurant in one table for outreach tracking: dish count, % verified, profile views in the last 30 days, claim-lead count, and a claim-status badge (Unclaimed / Claimed / Verified owner). Links back to `/admin`. No bottom nav. |
+
+> **One sign-in front door, role-routed.** `/login` (`useOwnerAuth()` +
+> `signInWithOtp`, same Supabase Auth magic-link pattern `/verify` and
+> `/admin` already used independently) is the single entry point — once a
+> session lands back on `/login`, an effect redirects to `/admin` if
+> `isAdmin`, else `/verify` (which already fully handles "no claim found" /
+> "pending approval" / the dashboard, so `/login` doesn't need its own
+> `restaurant_owners` lookup). `/verify` and `/admin` keep their own login
+> forms too — unchanged, so nothing that already worked can break — `/login`
+> only adds a discoverable front door, linked from Discover's Settings menu
+> ("Restaurant / admin sign in").
 
 **Bottom navigation** (`BottomNav.tsx`) — persistent 4-tab bar (Discover / Feed / Saved / Profile) rendered by each of those 4 route files (not by `__root.tsx`, so the restaurant detail page can opt out). Active tab is green with a small dot indicator + bold label.
 
@@ -632,6 +646,28 @@ CSS variables and Tailwind semantic classes (`bg-background`, `text-primary`,
   ("Good / Fair / Rough estimate") and color come from the `confidence` value.
 - Every nutrition surface carries the disclaimer: AI-estimated, not a guarantee,
   check with the restaurant for allergens.
+
+**Empty states & error handling.** Two shared components in `src/components/`
+so "nothing here" and "something broke" always look the same, never a blank
+screen or a raw `error.message`:
+- `EmptyState` — icon (in a circular `bg-secondary` badge) + title +
+  description + optional `action`. Used for: Saved with nothing bookmarked,
+  Discover's zero-filter-results (in both Map — a floating card over the map
+  — and List, with a **"Reset filters"** button that clears the search query
+  *and* calls `useFilters().reset()`), a restaurant's empty menu ("Menu
+  coming soon"), the whole Feed page if there are literally no restaurants
+  yet, and `/verify`'s analytics section once the restaurant has zero events
+  (distinct from that section's *other* empty case — the `restaurant_events`
+  table not being reachable yet pre-migration — which keeps its own plain-text
+  "check back soon" degrade).
+- `ErrorState` — icon + a plain-language "Something went wrong" message + a
+  "Try again" button (`router.invalidate(); reset();`, the same recovery
+  the root error boundary uses). Wired into every route's `errorComponent`
+  that previously rendered bare `Couldn't load: {error.message}` text
+  (`index.tsx`, `feed.tsx`, `saved.tsx`, `restaurants.$id.tsx`). Routes with
+  no `errorComponent` of their own (`profile`, `verify`, `admin`,
+  `admin-overview`) still fall back to `__root.tsx`'s `ErrorComponent`,
+  unchanged.
 
 ---
 

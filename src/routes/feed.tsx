@@ -1,7 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { MapPin, Info } from "lucide-react";
+import { MapPin, Info, UtensilsCrossed } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { MenuItem, Restaurant } from "@/lib/fuelo-types";
@@ -11,6 +11,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { BottomNav } from "@/components/BottomNav";
 import { CompareToggleButton } from "@/components/CompareToggleButton";
 import { toCompareItem } from "@/lib/compare";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 const feedQuery = queryOptions({
   queryKey: ["feed"],
@@ -37,9 +39,10 @@ export const Route = createFileRoute("/feed")({
       { name: "description", content: "Trending spots, newly verified dishes, and high protein picks near you." },
     ],
   }),
-  errorComponent: ({ error }) => (
-    <div className="p-8 text-sm text-muted-foreground">Couldn't load: {error.message}</div>
-  ),
+  errorComponent: ({ reset }) => {
+    const router = useRouter();
+    return <ErrorState onRetry={() => { router.invalidate(); reset(); }} />;
+  },
 });
 
 function proteinCalorieRatio(item: MenuItem): number | null {
@@ -89,6 +92,16 @@ function Feed() {
         </p>
       </header>
 
+      {data.restaurants.length === 0 ? (
+        <div className="px-4 sm:px-6 pt-6">
+          <EmptyState
+            icon={UtensilsCrossed}
+            title="Nothing here yet"
+            description="Check back soon as we add more restaurants and dishes."
+          />
+        </div>
+      ) : (
+        <>
       <FeedSection title="Trending near you">
         <ul className="flex gap-3 overflow-x-auto scrollbar-none pb-1 -mx-4 px-4 sm:-mx-6 sm:px-6">
           {data.restaurants.map((r) => (
@@ -127,6 +140,8 @@ function Feed() {
           <DishRow items={highProteinPicks} restaurantById={restaurantById} />
         )}
       </FeedSection>
+        </>
+      )}
 
       <p className="px-6 py-4 text-[11px] text-muted-foreground inline-flex items-start gap-2 max-w-2xl">
         <Info className="h-3.5 w-3.5 mt-[1px] flex-none" />

@@ -25,6 +25,7 @@ import { groupByCategory, type CategoryTypeMap } from "@/lib/menuGrouping";
 import { fetchCategoryTypeMap } from "@/lib/categoryTypes";
 import { useOwnerAuth } from "@/hooks/useOwnerAuth";
 import { fetchRestaurantAnalytics, computeTrend, type RestaurantAnalytics, type Trend } from "@/lib/analytics";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/verify")({
   component: VerifyPage,
@@ -45,7 +46,9 @@ function VerifyPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight">For restaurants</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Verify your menu's nutrition.</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Verify your menu's ingredients &amp; nutrition.
+            </p>
           </div>
           {email && (
             <button
@@ -356,6 +359,24 @@ function AnalyticsSection({ restaurantId, items }: { restaurantId: string; items
       <p className="mt-4 text-xs text-muted-foreground">
         Analytics will show up here once this update is fully live — check back soon.
       </p>
+    );
+  }
+
+  // Distinct from `!analytics` above (the table isn't reachable yet): this
+  // table IS reachable, there just aren't any events logged for this
+  // restaurant yet — a brand-new or not-yet-visited listing.
+  const hasActivity =
+    analytics.profileViews.thisMonth > 0 ||
+    analytics.searchesThisWeek > 0 ||
+    analytics.topDishes.length > 0;
+  if (!hasActivity) {
+    return (
+      <EmptyState
+        icon={Eye}
+        title="No activity yet"
+        description="Once customers start viewing your page, visits and popular dishes will show up here."
+        className="mt-4"
+      />
     );
   }
 
@@ -687,6 +708,7 @@ function AdjustEditor({
   onCancel: () => void;
   onSave: (patch: Partial<MenuItem>) => void;
 }) {
+  const [description, setDescription] = useState(item.description ?? "");
   const [values, setValues] = useState<Record<NutrientField, string>>(() => {
     const initial = {} as Record<NutrientField, string>;
     for (const n of NUTRIENTS) {
@@ -707,7 +729,7 @@ function AdjustEditor({
   };
 
   function save() {
-    const patch: Partial<MenuItem> = {};
+    const patch: Partial<MenuItem> = { description: description.trim() || null };
     for (const n of NUTRIENTS) {
       (patch as Record<string, number | null>)[n.min] = toNum(values[n.min]);
       (patch as Record<string, number | null>)[n.max] = toNum(values[n.max]);
@@ -718,6 +740,16 @@ function AdjustEditor({
   return (
     <div className="mt-3">
       <div className="grid gap-3">
+        <div>
+          <label className="text-sm font-semibold">Ingredients</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Hummus, handmade pitta, merguez, fried eggs, olives, dak dak salad"
+            rows={3}
+            className="mt-1 w-full resize-none rounded-xl bg-secondary px-3 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+          />
+        </div>
         {NUTRIENTS.map((n) => (
           <div key={n.label}>
             <label className="text-sm font-semibold">

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag, Footprints } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, MapPin, Info, SlidersHorizontal, Check, Target, Share2, Navigation, Phone, ShoppingBag, Footprints, UtensilsCrossed } from "lucide-react";
 
 
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +25,8 @@ import type { ShareCardInput } from "@/lib/shareCard";
 import { logProfileView, logMenuItemView } from "@/lib/analytics";
 import { buildDirectionsUrl } from "@/lib/directions";
 import { useNearbyWalkTime } from "@/hooks/useNearbyWalkTime";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 
 const restaurantQuery = (id: string) =>
   queryOptions({
@@ -60,9 +62,10 @@ export const Route = createFileRoute("/restaurants/$id")({
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(restaurantQuery(params.id)),
   component: RestaurantPage,
-  errorComponent: ({ error }) => (
-    <div className="p-8 text-sm text-muted-foreground">Couldn't load: {error.message}</div>
-  ),
+  errorComponent: ({ reset }) => {
+    const router = useRouter();
+    return <ErrorState onRetry={() => { router.invalidate(); reset(); }} />;
+  },
   notFoundComponent: () => <div className="p-8">Restaurant not found.</div>,
 });
 
@@ -222,10 +225,11 @@ function RestaurantPage() {
       <div className="px-4 sm:px-6 mt-6 space-y-8">
 
         {grouped.length === 0 && (
-          <div className="rounded-2xl bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
-            Menu coming soon. Once items are imported, they'll appear here with full nutrition
-            ranges.
-          </div>
+          <EmptyState
+            icon={UtensilsCrossed}
+            title="Menu coming soon"
+            description="Once items are imported, they'll appear here with full nutrition ranges."
+          />
         )}
         {grouped.map(([category, items]) => (
           <section key={category ?? "misc"}>

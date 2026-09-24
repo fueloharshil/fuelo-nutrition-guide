@@ -1,7 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, Settings, SlidersHorizontal, Target, ChevronRight, Footprints, Bike, Car, Trash2 } from "lucide-react";
+import { Search, MapPin, List as ListIcon, Map as MapIcon, Bookmark, Info, X, Settings, SlidersHorizontal, Target, ChevronRight, Footprints, Bike, Car, Trash2, LogIn } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Restaurant, MenuItem } from "@/lib/fuelo-types";
@@ -27,6 +27,8 @@ import { restaurantCuisines, CUISINE_TAGS } from "@/lib/cuisines";
 import { CUISINE_IMAGES, cuisineImageUrl } from "@/lib/cuisineImages";
 import { computeBadge } from "@/lib/discoverBadges";
 import { BottomNav } from "@/components/BottomNav";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 import { useProfile, PROFILE_KEY } from "@/components/ProfileProvider";
 import { dishFitsGoal } from "@/lib/profile";
 import { SAVED_KEY } from "@/components/SavedProvider";
@@ -81,15 +83,16 @@ const discoverQuery = queryOptions({
 export const Route = createFileRoute("/")({
   loader: ({ context }) => context.queryClient.ensureQueryData(discoverQuery),
   component: Discover,
-  errorComponent: ({ error }) => (
-    <div className="p-8 text-sm text-muted-foreground">Couldn't load: {error.message}</div>
-  ),
+  errorComponent: ({ reset }) => {
+    const router = useRouter();
+    return <ErrorState onRetry={() => { router.invalidate(); reset(); }} />;
+  },
   notFoundComponent: () => <div className="p-8">Not found.</div>,
 });
 
 function Discover() {
   const { data } = useSuspenseQuery(discoverQuery);
-  const { filters, patch } = useFilters();
+  const { filters, patch, reset: resetFilters } = useFilters();
   const { profile, hasGoal } = useProfile();
   const [view, setView] = useState<"map" | "list">("map");
   const [query, setQuery] = useState("");
@@ -280,6 +283,11 @@ function Discover() {
   // (see matchingFilterLabels — independent per-criterion, not the AND used
   // to decide who's shown). Closing without any dish-level filter active
   // (or with none matching) logs nothing.
+  const clearSearchAndFilters = () => {
+    setQuery("");
+    resetFilters();
+  };
+
   const closeFilters = () => {
     setFiltersOpen(false);
     if (!matchingRestaurantIds || matchingRestaurantIds.size === 0) return;
@@ -358,6 +366,11 @@ function Discover() {
           ) : (
             <MapSkeleton />
           )}
+          {!travelLoading && filtered.length === 0 && (
+            <div className="absolute inset-x-3 top-3 z-[400]">
+              <NoResultsState onReset={clearSearchAndFilters} />
+            </div>
+          )}
           {selected && (
             <RestaurantPreview
               restaurant={selected}
@@ -387,9 +400,9 @@ function Discover() {
                 />
               </li>
             ))}
-            {filtered.length === 0 && (
-              <li className="text-sm text-muted-foreground py-8 text-center">
-                No matches. Try a different dish or cuisine.
+            {!travelLoading && filtered.length === 0 && (
+              <li className="pt-4">
+                <NoResultsState onReset={clearSearchAndFilters} />
               </li>
             )}
           </ul>
@@ -501,8 +514,13 @@ function SettingsMenu() {
           <Trash2 className="h-4 w-4" /> Clear my data
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/login" className="cursor-pointer">
+            <LogIn className="h-4 w-4" /> Restaurant / admin sign in
+          </Link>
+        </DropdownMenuItem>
         <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-          No account needed — everything above is saved on this device only.
+          No account needed above — everything is saved on this device only.
         </p>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -796,6 +814,24 @@ function ActiveFiltersRow() {
 
 function MapSkeleton() {
   return <div className="h-full w-full bg-muted animate-pulse" />;
+}
+
+function NoResultsState({ onReset }: { onReset: () => void }) {
+  return (
+    <EmptyState
+      icon={Search}
+      title="No dishes match right now"
+      description="Try adjusting your filters."
+      action={
+        <button
+          onClick={onReset}
+          className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-95"
+        >
+          Reset filters
+        </button>
+      }
+    />
+  );
 }
 
 type TravelInfo = { mode: TravelMode; minutes: number | null };
