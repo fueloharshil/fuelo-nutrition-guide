@@ -196,7 +196,9 @@ tables are insert-only for the public.
 RLS: **public SELECT** (`anon`, `authenticated`); the linked owner may **UPDATE**
 just `phone`/`external_order_url`/`booking_url` on their own restaurant
 (column-level grant, same `restaurant_owners` pattern as `menu_items`, see
-below). `service_role` full access.
+below); the **admin** may INSERT/UPDATE/DELETE any row (`"Admin manages
+restaurants"` policy, migration `20260924162500_admin_tools` — powers
+`/admin`'s "Add a restaurant" form). `service_role` full access.
 
 > **Restaurant action buttons** (`RestaurantActionButtons` in
 > `restaurants.$id.tsx`) — Order Online / Book a Table / Directions / Call,
@@ -392,9 +394,9 @@ has full access. Added in migration `20260714200000_restaurant_owners_and_verify
 | --- | --- | --- |
 | `id` | uuid PK | |
 | `restaurant_id` | uuid FK → restaurants(id) | NOT NULL, ON DELETE CASCADE |
-| `event_type` | text | CHECK in (`profile_view`, `menu_item_view`, `search_match`) |
+| `event_type` | text | CHECK in (`profile_view`, `menu_item_view`, `search_match`, `action_click`) — `action_click` added in migration `20260924162500_admin_tools` |
 | `menu_item_id` | uuid FK → menu_items(id) | nullable, ON DELETE SET NULL — set only for `menu_item_view` |
-| `filter_type` | text | nullable — set only for `search_match`; a display label like "Max calories" / "Min protein" / "Vegan" |
+| `filter_type` | text | nullable — set for `search_match` (a display label like "Max calories" / "Min protein" / "Vegan") **or** `action_click` (which button: "Order Online" / "Book a Table" / "Directions" / "Call") |
 | `search_id` | uuid | nullable — set only for `search_match`; shared by every row logged from the same filter-apply action |
 | `created_at` | timestamptz | default `now()` |
 
@@ -403,25 +405,35 @@ trust model as `user_waitlist`/`restaurant_leads`); **SELECT** restricted to
 the restaurant's own linked owner (via `restaurant_owners`) or the admin.
 Added in migration `20260716090000_restaurant_events`.
 
-> **Analytics is derived, not tracked live.** `src/lib/analytics.ts` has three
+> **Analytics is derived, not tracked live.** `src/lib/analytics.ts` has four
 > fire-and-forget loggers — `logProfileView()` (restaurant page mount, in
 > `restaurants.$id.tsx`), `logMenuItemView()` (a shared-dish deep link
-> landing, or a Share tap), and `logSearchMatches()` (Discover's filter sheet
+> landing, or a Share tap), `logSearchMatches()` (Discover's filter sheet
 > closing with an active dish-level filter — one call batches a row per
 > matching restaurant **per matched criterion**, via `matchingFilterLabels()`
-> in `src/lib/filters.ts`, all sharing one `search_id`). Every logger swallows
-> its own errors (console.warn only) so a failed analytics ping never breaks
-> the page a visitor is actually using. The `/verify` dashboard's
-> `AnalyticsSection` calls `fetchRestaurantAnalytics()`, which pulls the last
-> 60 days of a restaurant's events in one query and reduces them client-side
-> into this-week/last-week/this-month/last-month profile-view counts (see
-> `computeTrend()` for the up/down/new/flat badge), a top-5 "Most viewed
-> dishes" list, and this week's search-appearance count + filter breakdown.
-> Like `restaurant_owners`/`menu_categories`, this table isn't in the
-> generated types yet, so all access goes through `dbPending`
-> (`src/lib/supabasePending.ts`); `fetchRestaurantAnalytics()` degrades to
-> `null` (not a throw) if the table isn't reachable, so the dashboard shows a
-> quiet "check back soon" note instead of breaking.
+> in `src/lib/filters.ts`, all sharing one `search_id`), and
+> `logActionClick()` (any tap on Order Online / Book a Table / Directions /
+> Call — see `RestaurantActionButtons` in `restaurants.$id.tsx`; fires
+> alongside the button's own `href`/`onClick` behavior, never blocks it).
+> Every logger swallows its own errors (console.warn only) so a failed
+> analytics ping never breaks the page a visitor is actually using. The
+> `/verify` dashboard's `AnalyticsSection` calls `fetchRestaurantAnalytics()`,
+> which pulls the last 60 days of a restaurant's events in one query and
+> reduces them client-side into this-week/last-week/this-month/last-month
+> profile-view counts (see `computeTrend()` for the up/down/new/flat badge),
+> a top-5 "Most viewed dishes" list, and this week's search-appearance count
+> + filter breakdown — it does **not** yet surface `action_click`, which is
+> admin-only for now (see `/admin-overview` below).
+> `fetchAllActionClicksThisMonth()` mirrors `fetchAllProfileViewsThisMonth()`
+> for that page's "Clicks (30d)" column. `restaurant_owners`/
+> `menu_categories`/`restaurant_events` are now in the generated
+> `types.ts` (regenerated 2026-09-24 — see the git-sync note above) but
+> access still goes through `dbPending` (`src/lib/supabasePending.ts`)
+> everywhere it already did; that's now a style inconsistency to clean up
+> eventually, not a functional requirement. `fetchRestaurantAnalytics()` and
+> the `fetchAll*()` helpers all degrade to `null`/an empty map (not a throw)
+> if a table isn't reachable, so a dashboard shows a quiet "check back soon"
+> note instead of breaking.
 
 > **The "get verified" banner dismisses per browser tab, not forever.**
 > `VerifyProgressBanner` (in `verify.tsx`) shows while `verifiedCount < total`
@@ -589,8 +601,8 @@ Added in migration `20260716090000_restaurant_events`.
 | `/profile` | `routes/profile.tsx` | **Profile** — daily goal picker (Lose weight/Build muscle/Maintain → adjustable calorie + protein target sliders) and dietary preference (Vegan/Vegetarian/none), local-only (see below); used only to power the "Fits your goal" tag elsewhere, not a food diary. Location-aware discovery still "coming soon"; links back to the waitlist. Bottom nav present. |
 | `/login` | `routes/login.tsx` | **Unified sign-in** — one magic-link form for both restaurant owners and the admin (see below). No bottom nav. |
 | `/verify` | `routes/verify.tsx` | **Owner verify dashboard** — magic-link login, then (if approved & linked) a dismissible **"get verified" banner** while any dish is unverified (see below), a prominent verification card (large `X%` + "X of Y dishes verified" progress bar), an **analytics section** (see `restaurant_events` above: "Profile views" and "Search visibility" stat cards with week/month trend, a "Most viewed dishes" top-5 list), then the restaurant's dishes grouped like the public page with three per-dish actions: "Looks right" (`is_verified=true`), "Adjust" (edit **ingredients** — the `description` field — **and** the 8 nutrition range fields, then verify), "Not on our menu" (`is_active=false`). No bottom nav (standalone owner area). |
-| `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to link an owner email → restaurant (`restaurant_owners`) and review claims/owners. Links to `/admin-overview`. No bottom nav. |
-| `/admin-overview` | `routes/admin-overview.tsx` | **Admin restaurant overview** — same magic-link/admin gate as `/admin`, a separate internal-only page (not for restaurant owners) listing every restaurant in one table for outreach tracking: dish count, % verified, profile views in the last 30 days, claim-lead count, and a claim-status badge (Unclaimed / Claimed / Verified owner). Links back to `/admin`. No bottom nav. |
+| `/admin` | `routes/admin.tsx` | **Admin onboarding** — magic-link login; only the admin email sees tools to **add a new restaurant** (`AddRestaurantForm`, collapsed behind an "Add a restaurant" button), link an owner email → restaurant (`restaurant_owners`), and review claims/owners. Links to `/admin-overview`. No bottom nav. |
+| `/admin-overview` | `routes/admin-overview.tsx` | **Admin restaurant overview** — same magic-link/admin gate as `/admin`, a separate internal-only page (not for restaurant owners) listing every restaurant in one table for outreach tracking: dish count, % verified, profile views in the last 30 days, **action-button clicks in the last 30 days** ("redirects" — Order Online/Book a Table/Directions/Call), claim-lead count, and a claim-status badge (Unclaimed / Claimed / Verified owner). Links back to `/admin`. No bottom nav. |
 
 > **One sign-in front door, role-routed.** `/login` (`useOwnerAuth()` +
 > `signInWithOtp`, same Supabase Auth magic-link pattern `/verify` and

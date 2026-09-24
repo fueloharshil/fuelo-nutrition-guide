@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { LogOut, Loader2, Link2 } from "lucide-react";
+import { LogOut, Loader2, Link2, Plus } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { dbPending } from "@/lib/supabasePending";
@@ -198,6 +198,8 @@ function AdminConsole() {
         ← Restaurant overview (outreach tracking)
       </Link>
 
+      <AddRestaurantForm onAdded={() => queryClient.invalidateQueries({ queryKey })} />
+
       <form onSubmit={link} className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
         <h2 className="text-base font-bold tracking-tight">Approve &amp; link an owner</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -270,5 +272,145 @@ function AdminConsole() {
         )}
       </section>
     </div>
+  );
+}
+
+// Lets the admin add a new restaurant directly from the app instead of the
+// Supabase table editor. Only name is required — cuisine/area/address are
+// freeform, latitude/longitude are optional but needed for the restaurant to
+// get a map pin on Discover (it'll still show in List view without them).
+// Gated by the "Admin manages restaurants" RLS policy (migration
+// 20260924162500_admin_tools), so this insert only ever works for the admin.
+function AddRestaurantForm({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState("");
+  const [cuisine, setCuisine] = useState("");
+  const [area, setArea] = useState("");
+  const [address, setAddress] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const toNum = (v: string): number | null => {
+    const t = v.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setMsg(null);
+    if (!name.trim()) {
+      setErr("Enter a restaurant name.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.from("restaurants").insert({
+      name: name.trim(),
+      cuisine: cuisine.trim() || null,
+      area: area.trim() || null,
+      address: address.trim() || null,
+      latitude: toNum(latitude),
+      longitude: toNum(longitude),
+    });
+    setSaving(false);
+    if (error) {
+      setErr(error.message || "Couldn't add it. Try again.");
+      return;
+    }
+    setMsg(`Added ${name.trim()}.`);
+    setName("");
+    setCuisine("");
+    setArea("");
+    setAddress("");
+    setLatitude("");
+    setLongitude("");
+    onAdded();
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 h-11 text-sm font-semibold text-primary-foreground transition hover:opacity-95"
+      >
+        <Plus className="h-4 w-4" /> Add a restaurant
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={add} className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
+      <h2 className="text-base font-bold tracking-tight">Add a restaurant</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Only the name is required. Add latitude/longitude to give it a map pin —
+        it'll still show in List view without them.
+      </p>
+      <div className="mt-3 grid gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Restaurant name"
+          className="h-12 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+        />
+        <input
+          value={cuisine}
+          onChange={(e) => setCuisine(e.target.value)}
+          placeholder="Cuisine, e.g. Middle Eastern brunch"
+          className="h-12 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+        />
+        <input
+          value={area}
+          onChange={(e) => setArea(e.target.value)}
+          placeholder="Area, e.g. Dalston, London"
+          className="h-12 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+        />
+        <input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Address"
+          className="h-12 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            inputMode="decimal"
+            value={latitude}
+            onChange={(e) => setLatitude(e.target.value)}
+            placeholder="Latitude"
+            className="h-12 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+          />
+          <input
+            inputMode="decimal"
+            value={longitude}
+            onChange={(e) => setLongitude(e.target.value)}
+            placeholder="Longitude"
+            className="h-12 rounded-full bg-secondary px-4 text-[15px] outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+          />
+        </div>
+        <div className="grid grid-cols-[1fr_2fr] gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="inline-flex h-12 items-center justify-center rounded-full bg-secondary text-sm font-medium text-muted-foreground transition hover:bg-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground transition hover:opacity-95 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Add restaurant
+          </button>
+        </div>
+        {msg && <p className="text-xs font-medium text-primary">{msg}</p>}
+        {err && <p className="text-xs text-destructive">{err}</p>}
+      </div>
+    </form>
   );
 }

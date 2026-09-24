@@ -30,6 +30,14 @@ export function logMenuItemView(restaurantId: string, menuItemId: string) {
   ]);
 }
 
+// The four restaurant-page buttons that send someone away from Fuelo toward
+// the restaurant's own channel — the admin's "redirects" metric.
+export type ActionClickType = "Order Online" | "Book a Table" | "Directions" | "Call";
+
+export function logActionClick(restaurantId: string, action: ActionClickType) {
+  logEvents([{ restaurant_id: restaurantId, event_type: "action_click", filter_type: action }]);
+}
+
 /** One search/filter-apply action that matched one or more restaurants,
  *  each via one or more filter criteria. All rows share a single search_id
  *  so the dashboard can count distinct searches vs. per-filter matches. */
@@ -134,6 +142,27 @@ export async function fetchAllProfileViewsThisMonth(): Promise<Map<string, numbe
     .from("restaurant_events")
     .select("restaurant_id")
     .eq("event_type", "profile_view")
+    .gte("created_at", since);
+  if (error) {
+    console.warn("[analytics] restaurant_events unavailable:", error.message);
+    return new Map();
+  }
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as { restaurant_id: string }[]) {
+    counts.set(row.restaurant_id, (counts.get(row.restaurant_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Action-click ("redirect") counts for every restaurant over the last 30
+ *  days, in one query — the admin overview's "Clicks (30d)" column. Same
+ *  degrade-to-empty-map pattern as fetchAllProfileViewsThisMonth. */
+export async function fetchAllActionClicksThisMonth(): Promise<Map<string, number>> {
+  const since = new Date(Date.now() - 30 * DAY_MS).toISOString();
+  const { data, error } = await dbPending
+    .from("restaurant_events")
+    .select("restaurant_id")
+    .eq("event_type", "action_click")
     .gte("created_at", since);
   if (error) {
     console.warn("[analytics] restaurant_events unavailable:", error.message);

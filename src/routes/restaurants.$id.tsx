@@ -22,7 +22,7 @@ import { CompareToggleButton } from "@/components/CompareToggleButton";
 import { toCompareItem } from "@/lib/compare";
 import { ShareButton } from "@/components/ShareButton";
 import type { ShareCardInput } from "@/lib/shareCard";
-import { logProfileView, logMenuItemView } from "@/lib/analytics";
+import { logProfileView, logMenuItemView, logActionClick } from "@/lib/analytics";
 import { buildDirectionsUrl } from "@/lib/directions";
 import { useNearbyWalkTime } from "@/hooks/useNearbyWalkTime";
 import { EmptyState } from "@/components/EmptyState";
@@ -318,6 +318,7 @@ function RestaurantActionButtons({
             href={r.external_order_url!}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => logActionClick(r.id, "Order Online")}
             className={`${buttonClass} bg-primary text-primary-foreground hover:opacity-95`}
           >
             <ShoppingBag className="h-4 w-4" /> Order Online
@@ -328,6 +329,7 @@ function RestaurantActionButtons({
             href={r.booking_url!}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => logActionClick(r.id, "Book a Table")}
             className={`${buttonClass} bg-accent text-accent-foreground hover:opacity-90`}
           >
             <CalendarCheck className="h-4 w-4" /> Book a Table
@@ -337,6 +339,7 @@ function RestaurantActionButtons({
           <button
             type="button"
             onClick={() => {
+              logActionClick(r.id, "Directions");
               const url = buildDirectionsUrl(r.latitude!, r.longitude!, r.name);
               window.open(url, "_blank", "noopener,noreferrer");
             }}
@@ -349,6 +352,7 @@ function RestaurantActionButtons({
           <a
             href={`tel:${r.phone!.replace(/[^0-9+]/g, "")}`}
             aria-label={`Call ${r.name}`}
+            onClick={() => logActionClick(r.id, "Call")}
             className={`${buttonClass} bg-secondary text-secondary-foreground hover:bg-accent`}
           >
             <Phone className="h-4 w-4" /> Call

@@ -6,7 +6,7 @@ import { LogOut, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { dbPending } from "@/lib/supabasePending";
 import type { MenuItem, Restaurant, RestaurantOwner } from "@/lib/fuelo-types";
-import { fetchAllProfileViewsThisMonth } from "@/lib/analytics";
+import { fetchAllProfileViewsThisMonth, fetchAllActionClicksThisMonth } from "@/lib/analytics";
 import { useOwnerAuth, ADMIN_EMAIL } from "@/hooks/useOwnerAuth";
 
 export const Route = createFileRoute("/admin-overview")({
@@ -121,6 +121,7 @@ type OverviewRow = {
   totalDishes: number;
   verifiedPct: number;
   profileViewsThisMonth: number;
+  actionClicksThisMonth: number;
   leadCount: number;
   claimStatus: ClaimStatus;
 };
@@ -132,12 +133,13 @@ type OverviewRow = {
 const normalizeName = (s: string) => s.trim().toLowerCase();
 
 async function fetchOverview(): Promise<OverviewRow[]> {
-  const [rRes, itemsRes, ownersRes, leadsRes, viewsThisMonth] = await Promise.all([
+  const [rRes, itemsRes, ownersRes, leadsRes, viewsThisMonth, clicksThisMonth] = await Promise.all([
     supabase.from("restaurants").select("id,name").order("name"),
     supabase.from("menu_items").select("restaurant_id,is_active,is_verified"),
     dbPending.from("restaurant_owners").select("email,restaurant_id"),
     supabase.from("restaurant_leads").select("restaurant_name"),
     fetchAllProfileViewsThisMonth(),
+    fetchAllActionClicksThisMonth(),
   ]);
   if (rRes.error) throw rRes.error;
   if (itemsRes.error) throw itemsRes.error;
@@ -178,6 +180,7 @@ async function fetchOverview(): Promise<OverviewRow[]> {
       totalDishes,
       verifiedPct,
       profileViewsThisMonth: viewsThisMonth.get(r.id) ?? 0,
+      actionClicksThisMonth: clicksThisMonth.get(r.id) ?? 0,
       leadCount: leadCounts.get(normalizeName(r.name)) ?? 0,
       claimStatus,
     };
@@ -228,6 +231,7 @@ function OverviewTable() {
               <th className="px-4 py-3 text-right">Dishes</th>
               <th className="px-4 py-3 text-right">% verified</th>
               <th className="px-4 py-3 text-right">Views (30d)</th>
+              <th className="px-4 py-3 text-right">Clicks (30d)</th>
               <th className="px-4 py-3 text-right">Leads</th>
               <th className="px-4 py-3">Claim status</th>
             </tr>
@@ -239,6 +243,7 @@ function OverviewTable() {
                 <td className="px-4 py-3 text-right tabular-nums">{r.totalDishes}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{r.verifiedPct}%</td>
                 <td className="px-4 py-3 text-right tabular-nums">{r.profileViewsThisMonth}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{r.actionClicksThisMonth}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{r.leadCount}</td>
                 <td className="px-4 py-3">
                   <ClaimStatusBadge status={r.claimStatus} />
@@ -247,7 +252,7 @@ function OverviewTable() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   No restaurants yet.
                 </td>
               </tr>
