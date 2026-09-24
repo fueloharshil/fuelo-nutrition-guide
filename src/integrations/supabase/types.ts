@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      menu_categories: {
+        Row: {
+          category_name: string
+          category_type: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          category_name: string
+          category_type: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          category_name?: string
+          category_type?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       menu_items: {
         Row: {
           calories_max: number | null
@@ -22,12 +43,14 @@ export type Database = {
           carbs_min: number | null
           category: string | null
           confidence: number | null
+          cooking_fat: string | null
           created_at: string
           description: string | null
           dietary_tags: string[] | null
           fat_max: number | null
           fat_min: number | null
           id: string
+          ingredients_detail: Json | null
           is_active: boolean
           is_verified: boolean
           menu_id: string | null
@@ -46,12 +69,14 @@ export type Database = {
           carbs_min?: number | null
           category?: string | null
           confidence?: number | null
+          cooking_fat?: string | null
           created_at?: string
           description?: string | null
           dietary_tags?: string[] | null
           fat_max?: number | null
           fat_min?: number | null
           id?: string
+          ingredients_detail?: Json | null
           is_active?: boolean
           is_verified?: boolean
           menu_id?: string | null
@@ -70,12 +95,14 @@ export type Database = {
           carbs_min?: number | null
           category?: string | null
           confidence?: number | null
+          cooking_fat?: string | null
           created_at?: string
           description?: string | null
           dietary_tags?: string[] | null
           fat_max?: number | null
           fat_min?: number | null
           id?: string
+          ingredients_detail?: Json | null
           is_active?: boolean
           is_verified?: boolean
           menu_id?: string | null
@@ -129,6 +156,51 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "menus_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          filter_type: string | null
+          id: string
+          menu_item_id: string | null
+          restaurant_id: string
+          search_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          filter_type?: string | null
+          id?: string
+          menu_item_id?: string | null
+          restaurant_id: string
+          search_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          filter_type?: string | null
+          id?: string
+          menu_item_id?: string | null
+          restaurant_id?: string
+          search_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_events_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_events_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -192,11 +264,14 @@ export type Database = {
           area: string | null
           created_at: string
           cuisine: string | null
+          cuisines: string[]
+          external_order_url: string | null
           id: string
           image_url: string | null
           latitude: number | null
           longitude: number | null
           name: string
+          phone: string | null
           verified: boolean
         }
         Insert: {
@@ -204,11 +279,14 @@ export type Database = {
           area?: string | null
           created_at?: string
           cuisine?: string | null
+          cuisines?: string[]
+          external_order_url?: string | null
           id?: string
           image_url?: string | null
           latitude?: number | null
           longitude?: number | null
           name: string
+          phone?: string | null
           verified?: boolean
         }
         Update: {
@@ -216,11 +294,14 @@ export type Database = {
           area?: string | null
           created_at?: string
           cuisine?: string | null
+          cuisines?: string[]
+          external_order_url?: string | null
           id?: string
           image_url?: string | null
           latitude?: number | null
           longitude?: number | null
           name?: string
+          phone?: string | null
           verified?: boolean
         }
         Relationships: []
