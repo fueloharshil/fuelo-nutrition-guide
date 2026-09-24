@@ -262,6 +262,7 @@ export type Database = {
         Row: {
           address: string | null
           area: string | null
+          booking_url: string | null
           created_at: string
           cuisine: string | null
           cuisines: string[]
@@ -277,6 +278,7 @@ export type Database = {
         Insert: {
           address?: string | null
           area?: string | null
+          booking_url?: string | null
           created_at?: string
           cuisine?: string | null
           cuisines?: string[]
@@ -292,6 +294,7 @@ export type Database = {
         Update: {
           address?: string | null
           area?: string | null
+          booking_url?: string | null
           created_at?: string
           cuisine?: string | null
           cuisines?: string[]
